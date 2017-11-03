@@ -1,0 +1,208 @@
+---
+title: "Predicting novel kinase-substrates using time-course phosphoproteomics data"
+author: "Team"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+#INTRODUCTION
+Phosphorylation is an essential protein post-translational modification characterized by the precise and reversible addition of a phosphate group, by proteins called 'kinases', to their targets, called 'substrates' (Hunter, 1995). The objective of this project is to classify AKT and mTOR substrates from the given data of all insulin phosphorylation sites. 
+
+With the advent of new technology and techniques in data science, the classification of the substrates, which was an ardent manual task before can now be fully automated. This project would endevour to identify new substrates within the 12,000 insulin phosphorylation sites from the time-course phosphotrome data that is provided.
+
+The report below will explain in-detail the approach and stages of the project, the analysis performed in each stage and final predictions with proper substantiation of the results.
+
+#Project Setup
+The inital *Project Setup Phase* included tasks for data preparation and defining the central code repository to be used all members of the group.
+
+###Data Preparation
+Data provided for the this project consists of the following data sets
+
+* **Insuline Phosphorylation site**
+* **AKT Substrates - A subset of all sites from the insuline phosphorylation site data**
+* **mTOR Substrates - A subset of all sites from the insuline** 
+* **Preduction 2016 - Probability of classifying as AKT or mTOR**
+
+The first phase of data preparation consisted of loading the data in to a matrix and removing the records that did not respond to phosphorylation. For removing the records, we used the Average Fold and filtered out those records with less than 0.00. The output of data preparation was a dataset that had records containing only phosphorylation sites that responded to AKT or mTOR substrates.
+
+The next phase was to use the AKT substrates and mTOR substrates data to index each Insuline Phoshorylation sites to indicate AKT as 1, mTOR as -1 and unlabelled ones as 0. The prediction for 2016 data that was provided was loaded to a data frame for validation of the final results.
+
+This data preparation stage setup the data for sampling and modelling phases during the later stages of the project.
+
+###Code Versioning
+Github was used as the code repository and version management tool for the project. A central code repository was created and one member of the team was designated as the administrator for management of the versions.
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r set working directory and read data,,results='asis', echo=FALSE}
+ 
+setwd("C:/Users/Sahana/Documents/STAT5003 Computational Statistical Methods")
+raw_data = read.csv("InsulinPhospho.txt",header = TRUE, sep = "\t")
+data = raw_data
+akt_data = raw_data
+mTOR_data = raw_data
+
+#Reading the akt and mTOR substrate data#
+
+akt_substrate = read.csv("Akt_substrates.txt",header = FALSE, sep = "\t")
+mTOR_substrate = read.csv("mTOR_substrates.txt",header = FALSE, sep = "\t")
+
+data$Class = ifelse(is.element(data$Identifier,akt_substrate[,1]),1,ifelse(is.element(data$Identifier,mTOR_substrate[,1]),-1,0))
+
+akt_data$Class = ifelse(is.element(akt_data$Identifier,akt_substrate[,1]),1,-1)
+mTOR_data$Class = ifelse(is.element(mTOR_data$Identifier,mTOR_substrate[,1]),1,-1)
+
+```
+#Project Methodology and Approach
+A systematic analysis of data was paramount to achieve the objective of the project, hence a framework of analysis, feature selection , model selection, and model validation was adopted. The scope of work was broken down to the following stages.
+
+* **Exploratory Analysis:** Comprised of understanding the feature space to get a feel of the data using the 2 aggregate measures provided i.e, Average Fold and AUC. Clustering techniques were used for exploratory analysis.
+
+* **Feature Selection:** Focused on identying the features that highly contributed to the classification. This was performed by forward stepwise.
+
+* **Characteristics of Dataset:** Class imbalance and partially labelled were the challenges faced with the dataset that was provided. Random Over-sampling (ROSE) and Repeated sampling (Bagging) techniques were used to overcome the challenges.  
+
+* **Model Selection:** Performed classification using various models and calculated the accuracy, sensitivity and specificity of the models to identify the optimal model that had the best performance metrics.
+
+* **Model Evaluation:** Cross validation using k-folds was used as the primary method and benchmarked model outputs to identify the best model for prediction.
+
+Each of the stages mentioned above will be explained in detail in the following sections.
+
+#Exploratory Analysis
+
+Average fold and Area under the curve (AUC) were the aggregated measures that were provided along with the data. These data elements were used extensively to plot and understand the emergence of pattern within the data provided.
+Exploratory analysis was used a means of getting a feel of the data and how the various features impacted the phosphorylation sites during the time-course. 
+
+```{r Plot data for visualization, echo=FALSE}
+
+subset(data, Class == 1)$AUC
+par(mfrow = c(1, 2),pty = "s")
+#AUC vs Avg.Fold
+plot(x=subset(data, Class == 0)$AUC,y=subset(data, Class == 0)$Avg.Fold,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$Avg.Fold,col="red",pch=13)
+points(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$Avg.Fold,col="blue",pch=13)
+
+#X15s vs Avg.Fold
+plot(x=subset(data, Class == 0)$AUC,y=subset(data, Class == 0)$X15s,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$X15s,col="red",pch=13)
+points(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$X15s,col="blue",pch=13)
+
+```
+
+As plotted above, it is evident from the exploratory analysis that the AKT and mTOR substrates had different time-course reaction on the phosphorylation sites. AKT substrates have an early impact and mTOR substrated have a late impact on the sites.
+Clustering was also performed on the data to identify the patterns. Both hierarchical and k-means clustering methods were performed on the given data to identify how the data is getting grouped. Here again, there was a distinct pattern in the time-course reaction for AKT substrates and mTOR substrates as shown in the clustering output below.
+```{r Normal distribution, echo=FALSE}
+
+par(mfrow = c(2, 2),pty = "s")
+for(i in 3:12){ 
+  rX15 = rnorm(1000,mean(akt_data[,i]),sd(akt_data[,i]))
+  drX15 = dnorm(rX15, mean(akt_data[,i]),sd(akt_data[,i]))
+  
+  mTOR_rX15 = rnorm(1000,mean(mTOR_data[,i]),sd(mTOR_data[,i]))
+  mTOR_drX15 = dnorm(mTOR_rX15, mean(mTOR_data[,i]),sd(mTOR_data[,i]))
+  
+  plot(rX15,drX15,col="red"
+       ,ylim =c(min(mTOR_drX15,drX15),max(mTOR_drX15,drX15))
+       ,xlim =c(min(mTOR_rX15,rX15),max(mTOR_rX15,rX15))
+       ,ylab=colnames(akt_data[i]),
+       xlab=paste("Mean_AKT = ",round(mean(akt_data[,i]),2),"Mean_mTOR = ",round(mean(mTOR_data[,i]),2)))
+  points(mTOR_rX15,mTOR_drX15,col="blue")
+}
+
+```
+
+#Building Prediction Models as calling-functions
+To enable further analysis of the features and to be able to select the best model, we beleived in developing various models as calling-functions and parametrize those functions for reuse. This helped us immensely by allowing us to call these models as functions when required to perform validations and tests. We developed functions for the following models
+
+* **Support Vector Machine (SVM)**
+* **Linear Discriminant Analysis (LDA)**
+* **K nearest neighbor (KNN)**
+
+The source code for the functions are shown below. Please note that these models will be called in to action during various stages - while selecting features, while sampling and while comparing model outputs to select the best model for prediction - in the future sections.
+
+#Feature Selection from data
+It is imperative to reduce the feature space with a view to improving accuracy. In that respect, we used the statistical t-test for our feature selection. t-test was more superior than other methods for a feature selection since it takes in to consideration the variablility within the class.
+
+In-order to select the most significant features, we performed listed out the best features in a rank order. The feature selection function and its output are shown below. But we were careful NOT to select the top features arbitarily, instead we used the SVM, LDA and KNN function we developed above and iterated the functions through the models. Then we selected the features that perfomed well in the cross-validation metrics. This way we ensured there was no bias in our feature selection and it was completelu automated. 
+
+
+#Manage Class-Imbalance
+Class imbalance was a key issue with the phosphometrics data that was provided, since the number of labelled datasets were very less. the degree of imbalance is very high for positive labelled data with the number of positive labelled data was 22 for AKT and 26 for mTOR out of the full dataset of 12,000. Solving class-imbalance in the data required the usage of sampling techniques to generate samples from the imbalanced data. 
+An attempt was made using various sampling methods to identify samples that were positively labelled and use them for the classification. We used Random up-sampling and Repeated sampling (Bagging) and the results of the same as documented below. Each of the samples generated were futher used in the model functions of SVM , LDA and KNN for prediction.
+
+###Random Over-sampling using ROSE
+ROSE (Random Over-Sampling Examples) package provides functions to deal with binary classification problems in the presennce of imbalanced classes (Menardi and Torelli, 2013).  Synthetic balanced samples are generated according to ROSE (Menardi and Torelli, 2013).The package pivots on function ROSE which generates synthetic balanced samples and thus allows to strenghten the subsequent estimation of any binary classifier. ROSE (Random Over-Sampling Examples) is a bootstrap-based technique which aids the task of binary classification in the presence of rare classes. It handles both continuous and categorical data by generating synthetic examples from a conditional density estimate of the two classes.
+ROSE package was used to generate AKT and mTOR samples from the population dataset provided. The output of the ROSE based sampling is provided below. 
+
+###Repeated Sampling using Bagging
+Bagging was a particularly simple and appropriate technique for our prediction problem space. Since the number of posivitely labelled samples were very less, we used bagging with "50 bags" to boostrap samples from the dataset. Then these 50 bags furhter iterated with all the model functions by using the model functions were developed for SVM, LDA and KNN. Here again, we used the cross-validation metrics as the benchmark for selecting the samples with the best performance metric
+
+
+#Model Output Comparison
+As mentioned in the previous sections, using the models as calling-functions we executed feature selection, random-sampling and repeated sampling techniques as an integrated framework. This was deliberately done in-order to make the process fully automated and stay clear of any bias that we may introduce if we set any values arbitarily. Also, the process of selecting the best features and samples were completed based on the cross-validadtion metrics of sensitivity, specificity and accuracy. 
+With that guideline, we proceeded to generate the probability of AKT and mTOR substrates data using random over-sampling (ROSE) and repeated sampling using bagging. We then compared the probabilities to the prediction from 2016.
+
+#Model Validation
+As was demonstrated in each of the above sections, our methodology and framework was built with strong reliance on the cross-validation metrics of sensitivity, specificity, accuracy and F1 score. In each of the critical stages of Feature selection, sampling and model selection we benchmarked our results to the performance metrics and always selected the best performing model that has the best output for these benchmark. We did not perform cross-validation as an after step to each of our stages, but we completed integrated cross-validation in to our code and methodology.
+
+#Conclusion
+
+
+
+
+
+
+
+
+```{r Naive Bayes Classifier, echo=FALSE}
+
+library(e1071)
+nrow(akt_data)
+model <- naiveBayes(Class ~ ., data = akt_data[,3:length(akt_data)])
+attributes(model)
+summary(model)
+print(model)
+model$tables
+```
+
+```{r ROSE UPsampling, echo=FALSE}
+library(ROSE)
+akt_data.rose <- ROSE(Class~., data=akt_data, seed=3)$data
+table(akt_data.rose$Class)
+
+data = akt_data.rose
+
+plot(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$Avg.Fold,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$Avg.Fold,col="red",pch=13)
+
+```
+
+
+```{r SVM, echo=FALSE}
+
+svm_data = data[,c(3,4)]
+svm.model <- svm(svm_data, y=data$Class, kernel="linear", type="C-classification", scale=FALSE, cost = 0.01)
+
+# coefs: estimated betas
+w <- t(svm.model$coefs) %*% svm.model$SV
+# rho: the negative intercept of decision boundary
+b <- -svm.model$rho
+
+plot(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$Avg.Fold,col="red",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$Avg.Fold,col="yellow",pch=13)
+# plot decision boundary
+abline(a=-b/w[1,2], b=-w[1,1]/w[1,2], col="black", lty=1)
+# plot margins
+abline(a=(-b-1)/w[1,2], b=-w[1,1]/w[1,2], col="orange", lty=3)
+abline(a=(-b+1)/w[1,2], b=-w[1,1]/w[1,2], col="orange", lty=3)
+```
+
+```{r Confusion Matrix, echo=FALSE}
+
+prediction <- predict(svm.model, svm_data) 
+
+tab <- table(pred = prediction, true = data$Class) 
+print('contingency table')
+tab
+```
+

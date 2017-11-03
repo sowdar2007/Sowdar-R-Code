@@ -1,0 +1,109 @@
+---
+title: "Introduction to classification (STAT5003 2016)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+## Create sumulation dataset
+```{r}
+# create positive class sample with 2 descriptive features
+set.seed(3)
+f1 <- rnorm(100, mean=6, sd = 1.2)
+set.seed(4)
+f2 <- rnorm(100, mean=6, sd = 1.2)
+P.data <- cbind(f1, f2)
+
+# create positive class sample with 2 descriptive features
+set.seed(7)
+f1 <- rnorm(300, mean=4, sd = 1.2)
+set.seed(8)
+f2 <- rnorm(300, mean=4, sd = 1.2)
+N.data <- cbind(f1, f2)
+
+# combine all samples
+data.mat <- data.frame(rbind(P.data, N.data), Class=rep(c(1, 0), time=c(nrow(P.data), nrow(N.data))))
+rownames(data.mat) <- paste("s", 1:(nrow(P.data)+nrow(N.data)), sep="")
+
+# plot data
+plot(subset(data.mat, Class==1)[,-3], col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9), xlab="Feature 1", ylab="Feature 2")
+points(subset(data.mat, Class==0)[,-3], col="blue", pch=16)
+```
+
+## Create and utilise logistic regression model for data classification
+```{r}
+# train a logistic regression model
+logit.model <- glm(Class~., family=binomial(link='logit'), data=data.mat)
+# plot fitted values from logistic regression model
+plot(logit.model$fitted.values)
+# use fitted value to classify samples
+logit.decision <- ifelse(logit.model$fitted.values > 0.5, 1, 0)
+# calculate classification accuracy (in percentage %)
+sum(logit.decision == data.mat$Class) / nrow(data.mat) * 100
+```
+
+
+## Create and utilise linear discriminant analysis (LDA) model for data classification
+```{r}
+library(MASS)
+# train an LDA model
+lda.model <- lda(Class~., data=data.mat)
+lda.fitted <- predict(lda.model, data.mat)$posterior[,"1"]
+# plot fitted values from LDA model
+plot(lda.fitted)
+# use fitted value to classify samples
+lda.decision <- ifelse(lda.fitted > 0.5, 1, 0)
+# calculate classification accuracy (in percentage %)
+sum(lda.decision == data.mat$Class) / nrow(data.mat) * 100
+```
+
+## compare Logistic regression classification with LDA classification
+```{r}
+cor(logit.model$fitted.values, lda.fitted)
+plot(logit.model$fitted.values, lda.fitted)
+```
+
+## Create and utilise kNN model for data classification
+```{r}
+library(class)
+# a knn with k=1
+knn.model1 <- knn(train=data.mat[,-3], test=data.mat[,-3], cl=data.mat[,3], k=1)
+# a knn with k=5
+knn.model2 <- knn(train=data.mat[,-3], test=data.mat[,-3], cl=data.mat[,3], k=5)
+# a knn with k=50
+knn.model3 <- knn(train=data.mat[,-3], test=data.mat[,-3], cl=data.mat[,3], k=50)
+
+# calculate classification accuracy
+sum(knn.model1 == data.mat$Class) / nrow(data.mat) * 100
+sum(knn.model2 == data.mat$Class) / nrow(data.mat) * 100
+sum(knn.model3 == data.mat$Class) / nrow(data.mat) * 100
+
+# apply knn and enable calculation of prediction probability
+knn.model <- knn(train=data.mat[,-3], test=data.mat[,-3], cl=data.mat[,3], k=5, prob=TRUE)
+# extract prediction probability from the prediction model
+knn.prob <- attr(knn.model, "prob")
+isNegativeSample <- data.mat[,3] != 1
+knn.prob[isNegativeSample] <-  1 - knn.prob[isNegativeSample]
+
+plot(knn.prob)
+```
+
+## compare kNN classification with Logistic regression classification and LDA classification
+```{r}
+# combine classification results into a data frame
+classifications <- data.frame(logit=logit.model$fitted.values, lda=lda.fitted, knn=knn.prob)
+# calculate correlation
+cor(classifications)
+# create pairwise scatter plot
+pairs(classifications)
+```
+
+
+
+# output session information
+```{r}
+sessionInfo()
+```
+
+
+

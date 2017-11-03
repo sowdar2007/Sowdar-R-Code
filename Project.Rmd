@@ -1,0 +1,126 @@
+---
+title: "Project"
+author: "Team"
+date: "26 September 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r set working directory and read data,,results='asis'}
+ 
+setwd("C:/Users/kirubha/Desktop/Dataset/Data/Project")
+raw_data = read.csv("InsulinPhospho.txt",header = TRUE, sep = "\t")
+data = raw_data
+akt_data = raw_data
+mTOR_data = raw_data
+
+
+
+akt_substrate = read.csv("Akt_substrates.txt",header = FALSE, sep = "\t")
+mTOR_substrate = read.csv("mTOR_substrates.txt",header = FALSE, sep = "\t")
+
+data$Class = ifelse(is.element(data$Identifier,akt_substrate[,1]),1,ifelse(is.element(data$Identifier,mTOR_substrate[,1]),-1,0))
+
+akt_data$Class = ifelse(is.element(akt_data$Identifier,akt_substrate[,1]),1,-1)
+mTOR_data$Class = ifelse(is.element(mTOR_data$Identifier,mTOR_substrate[,1]),1,-1)
+
+```
+
+```{r Plot data for visualization}
+
+subset(data, Class == 1)$AUC
+
+#AUC vs Avg.Fold
+plot(x=subset(data, Class == 0)$AUC,y=subset(data, Class == 0)$Avg.Fold,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$Avg.Fold,col="red",pch=13)
+points(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$Avg.Fold,col="blue",pch=13)
+
+#X15s vs Avg.Fold
+plot(x=subset(data, Class == 0)$AUC,y=subset(data, Class == 0)$X15s,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$X15s,col="red",pch=13)
+points(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$X15s,col="blue",pch=13)
+
+```
+
+
+```{r Normal distribution}
+
+for(i in 3:12){ 
+  rX15 = rnorm(1000,mean(akt_data[,i]),sd(akt_data[,i]))
+  drX15 = dnorm(rX15, mean(akt_data[,i]),sd(akt_data[,i]))
+  
+  mTOR_rX15 = rnorm(1000,mean(mTOR_data[,i]),sd(mTOR_data[,i]))
+  mTOR_drX15 = dnorm(mTOR_rX15, mean(mTOR_data[,i]),sd(mTOR_data[,i]))
+  
+  plot(rX15,drX15,col="red"
+       ,ylim =c(min(mTOR_drX15,drX15),max(mTOR_drX15,drX15))
+       ,xlim =c(min(mTOR_rX15,rX15),max(mTOR_rX15,rX15))
+       ,ylab=colnames(akt_data[i]),
+       xlab=paste("Mean_AKT = ",round(mean(akt_data[,i]),2),"Mean_mTOR = ",round(mean(mTOR_data[,i]),2)))
+  points(mTOR_rX15,mTOR_drX15,col="blue")
+}
+
+
+#sum(subset(data,Class == 1)$Class)
+```
+```{r Naive Bayes Classifier}
+
+library(e1071)
+nrow(akt_data)
+model <- naiveBayes(Class ~ ., data = akt_data[,3:length(akt_data)])
+attributes(model)
+summary(model)
+print(model)
+model$tables
+?naiveBayes
+```
+
+```{r ROSE UPsampling}
+library(ROSE)
+akt_data.rose <- ROSE(Class~., data=akt_data, seed=3)$data
+table(akt_data.rose$Class)
+
+data = akt_data.rose
+
+plot(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$Avg.Fold,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$Avg.Fold,col="red",pch=13)
+
+```
+
+```{r SMOTE UPsampling}
+```
+
+
+
+```{r SVM}
+
+svm_data = data[,c(3,4)]
+svm.model <- svm(svm_data, y=data$Class, kernel="linear", type="C-classification", scale=FALSE, cost = 0.01)
+
+# coefs: estimated betas
+w <- t(svm.model$coefs) %*% svm.model$SV
+# rho: the negative intercept of decision boundary
+b <- -svm.model$rho
+
+plot(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$Avg.Fold,col="red",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$Avg.Fold,col="yellow",pch=13)
+# plot decision boundary
+abline(a=-b/w[1,2], b=-w[1,1]/w[1,2], col="black", lty=1)
+# plot margins
+abline(a=(-b-1)/w[1,2], b=-w[1,1]/w[1,2], col="orange", lty=3)
+abline(a=(-b+1)/w[1,2], b=-w[1,1]/w[1,2], col="orange", lty=3)
+```
+
+```{r Confusion Matrix}
+
+prediction <- predict(svm.model, svm_data) 
+
+tab <- table(pred = prediction, true = data$Class) 
+print('contingency table')
+tab
+```
+

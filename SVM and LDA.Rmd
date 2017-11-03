@@ -1,0 +1,268 @@
+---
+title: "Support Vector Machines (STAT5003)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+## Libraries to load
+```{r, warning=FALSE, message=FALSE}
+library(e1071)
+```
+
+## Demonstrate Maximal Margin Classifier
+```{r, fig.width=6, fig.height=6}
+# create example data
+f1 <- c(.5,1,1,2,3,3.5,     1,3.5,4,5,5.5,6)
+f2 <- c(3.5,1,2.5,2,1,1.2,  5.8,3,4,5,4,1)
+cls <- c(rep(+1,6), rep(-1,6))
+dat <- cbind(f1, f2)
+
+# train a maximal margin classifier
+svm.model <- svm(dat, y=cls, kernel="linear", type="C-classification", scale=FALSE)
+# plot all points from the two classes
+plot(dat, col=(cls+3)/2, pch=19, xlim=c(-1,6), ylim=c(-1,6))
+# plot support vectors
+points(svm.model$SV, col="blue",cex=2) 
+
+# coefs: estimated betas
+w <- t(svm.model$coefs) %*% svm.model$SV
+# rho: the negative intercept of decision boundary
+b <- -svm.model$rho
+# plot decision boundary
+abline(a=-b/w[1,2], b=-w[1,1]/w[1,2], col="black", lty=1)
+# plot margins
+abline(a=(-b-1)/w[1,2], b=-w[1,1]/w[1,2], col="orange", lty=3)
+abline(a=(-b+1)/w[1,2], b=-w[1,1]/w[1,2], col="orange", lty=3)
+```
+
+## Demonstrate Support Vector Classifier
+### Create sumulation dataset
+```{r}
+# create positive class sample with 2 descriptive features
+set.seed(1)
+f1 <- rnorm(10, mean=6, sd = 1)
+f2 <- rnorm(10, mean=6, sd = 1)
+P.data <- cbind(f1, f2)
+
+# create positive class sample with 2 descriptive features
+f1 <- rnorm(30, mean=4, sd = 1)
+f2 <- rnorm(30, mean=4, sd = 1)
+N.data <- cbind(f1, f2)
+
+# combine all samples
+data.mat <- data.frame(rbind(P.data, N.data), Class=rep(c("P", "N"), time=c(nrow(P.data), nrow(N.data))))
+rownames(data.mat) <- paste("s", 1:(nrow(P.data)+nrow(N.data)), sep="")
+
+# plot data
+plot(P.data, col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9))
+points(N.data, col="blue", pch=16)
+```
+
+### Train a support vector classifier
+```{r, fig.width=6, fig.height=6}
+library(e1071)
+svm.model1 <- svm(x=data.mat[,-3], y=data.mat[,3], kernel="linear", type="C-classification", cost = 1)
+svm.model2 <- svm(x=data.mat[,-3], y=data.mat[,3], kernel="linear", type="C-classification", cost = 10)
+svm.model3 <- svm(x=data.mat[,-3], y=data.mat[,3], kernel="linear", type="C-classification", cost = 0.01)
+
+par(mfrow=c(2,2))
+# mapping decision boundary for model1
+## set up the plot without plotting points
+plot(P.data, ylim=c(0, 9), xlim=c(0, 9), type="n", main="C=1")
+for(x in seq(0, 10, by=0.2)){
+  for(y in seq(0, 10, by=0.2)){
+    t <- cbind(x, y)
+    colnames(t) <- c("f1", "f2")
+    if(predict(svm.model1, t) == 'N') {
+      points(x, y, col="lightblue", cex=0.2)
+    } else {
+      points(x, y, col="orange", cex=0.2)
+    }
+  }
+}
+points(P.data, col="red", pch=16)
+points(N.data, col="blue", pch=16)
+
+# mapping decision boundary for model2
+plot(P.data, ylim=c(0, 9), xlim=c(0, 9), type="n", main="C=10")
+for(x in seq(0, 10, by=0.2)){
+  for(y in seq(0, 10, by=0.2)){
+    t <- cbind(x, y)
+    colnames(t) <- c("f1", "f2")
+    if(predict(svm.model2, t) == 'N') {
+      points(x, y, col="lightblue", cex=0.2)
+    } else {
+      points(x, y, col="orange", cex=0.2)
+    }
+  }
+}
+points(P.data, col="red", pch=16)
+points(N.data, col="blue", pch=16)
+
+
+# mapping decision boundary for model3
+plot(P.data, ylim=c(0, 9), xlim=c(0, 9), type="n", main="C=0.01")
+for(x in seq(0, 10, by=0.2)){
+  for(y in seq(0, 10, by=0.2)){
+    t <- cbind(x, y)
+    colnames(t) <- c("f1", "f2")
+    if(predict(svm.model3, t) == 'N') {
+      points(x, y, col="lightblue", cex=0.2)
+    } else {
+      points(x, y, col="orange", cex=0.2)
+    }
+  }
+}
+points(P.data, col="red", pch=16)
+points(N.data, col="blue", pch=16)
+
+```
+
+
+## Demonstrate Support Vector Machines
+### Create a linearly non-seperable data
+```{r}
+# create positive class sample with 2 descriptive features
+set.seed(3)
+f1 <- rnorm(50, mean=6, sd = 0.6)
+set.seed(4)
+f2 <- rnorm(50, mean=6, sd = 0.6)
+P1.data <- cbind(f1, f2)
+
+set.seed(5)
+f1 <- rnorm(50, mean=3, sd = 0.6)
+set.seed(6)
+f2 <- rnorm(50, mean=3, sd = 0.6)
+P2.data <- cbind(f1, f2)
+P.data <- rbind(P1.data, P2.data)
+
+# create positive class sample with 2 descriptive features
+set.seed(7)
+f1 <- rnorm(100, mean=4.5, sd = 0.6)
+set.seed(8)
+f2 <- rnorm(100, mean=4.5, sd = 0.6)
+N.data <- cbind(f1, f2)
+
+# combine all samples
+data.mat <- data.frame(rbind(P.data, N.data), Class=rep(c("P", "N"), time=c(nrow(P.data), nrow(N.data))))
+rownames(data.mat) <- paste("s", 1:(nrow(P.data)+nrow(N.data)), sep="")
+
+# plot data
+plot(P.data, col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9))
+points(N.data, col="blue", pch=16)
+```
+
+### Using a support vector classifier to classify such a linearly non-seperable data
+```{r, fig.width=6, fig.height=6}
+svm.model <- svm(x=data.mat[,-3], y=data.mat[,3], kernel="linear", type="C-classification")
+
+# plot data
+plot(P.data, col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9))
+points(N.data, col="blue", pch=16)
+
+# mapping decision boundary
+for(x in seq(0, 10, by=0.2)){
+  for(y in seq(0, 10, by=0.2)){
+    t <- cbind(x, y)
+    colnames(t) <- c("f1", "f2")
+    if(predict(svm.model, t) == 'N') {
+      points(x, y, col="lightblue", cex=0.2)
+    } else {
+      points(x, y, col="orange", cex=0.2)
+    }
+  }
+}
+```
+
+### Using a support vector machine to classify such a linearly non-seperable data
+```{r, fig.width=6, fig.height=6}
+## polynomial kernel
+svm.model <- svm(x=data.mat[,-3], y=data.mat[,3], kernel="polynomial", degree=6, type="C-classification")
+
+# plot data
+plot(P.data, col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9))
+points(N.data, col="blue", pch=16)
+
+# mapping decision boundary
+for(x in seq(0, 10, by=0.2)){
+  for(y in seq(0, 10, by=0.2)){
+    t <- cbind(x, y)
+    colnames(t) <- c("f1", "f2")
+    if(predict(svm.model, t) == 'N') {
+      points(x, y, col="lightblue", cex=0.2)
+    } else {
+      points(x, y, col="orange", cex=0.2)
+    }
+  }
+}
+
+
+## radial basis function as kernel
+svm.model <- svm(x=data.mat[,-3], y=data.mat[,3], kernel="radial", type="C-classification")
+
+# plot data
+plot(P.data, col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9))
+points(N.data, col="blue", pch=16)
+
+# mapping decision boundary
+for(x in seq(0, 10, by=0.2)){
+  for(y in seq(0, 10, by=0.2)){
+    t <- cbind(x, y)
+    colnames(t) <- c("f1", "f2")
+    if(predict(svm.model, t) == 'N') {
+      points(x, y, col="lightblue", cex=0.2)
+    } else {
+      points(x, y, col="orange", cex=0.2)
+    }
+  }
+}
+```
+
+
+# Demonstration of LDA
+```{r}
+library(MASS)
+# create positive class sample with 2 descriptive features
+set.seed(1)
+f1 <- rnorm(10, mean=6, sd = 1)
+f2 <- rnorm(10, mean=6, sd = 1)
+P.data <- cbind(f1, f2)
+
+# create positive class sample with 2 descriptive features
+f1 <- rnorm(30, mean=4, sd = 1)
+f2 <- rnorm(30, mean=4, sd = 1)
+N.data <- cbind(f1, f2)
+
+# combine all samples
+data.mat <- data.frame(rbind(P.data, N.data), Class=rep(c("P", "N"), time=c(nrow(P.data), nrow(N.data))))
+rownames(data.mat) <- paste("s", 1:(nrow(P.data)+nrow(N.data)), sep="")
+
+# train a logistic regression model
+lda.model <- lda(Class~., data=data.mat)
+
+# plot data
+plot(P.data, col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9))
+points(N.data, col="blue", pch=16)
+
+# mapping decision boundary
+for(x in seq(0, 10, by=0.2)){
+  for(y in seq(0, 10, by=0.2)){
+    t <- data.frame(x, y)
+    colnames(t) <- c("f1", "f2")
+    lda.fitted <- predict(lda.model, t)$posterior[,"P"]
+    lda.decision <- ifelse(lda.fitted > 0.5, 'P', 'N')
+    if(lda.decision == 'P') {
+      points(x, y, col="lightblue", cex=0.2)
+    } else {
+      points(x, y, col="orange", cex=0.2)
+    }
+  }
+}
+```
+
+# output session information
+```{r}
+sessionInfo()
+```
+

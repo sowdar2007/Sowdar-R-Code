@@ -1,0 +1,153 @@
+---
+title: "Cross-validation and bootstrap (STAT5003 2016)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+## Create sumulation dataset
+```{r}
+# create positive class sample with 2 descriptive features
+set.seed(3)
+f1 <- rnorm(100, mean=6, sd = 1.2)
+set.seed(4)
+f2 <- rnorm(100, mean=6, sd = 1.2)
+P.data <- cbind(f1, f2)
+
+# create positive class sample with 2 descriptive features
+set.seed(7)
+f1 <- rnorm(300, mean=4, sd = 1.2)
+set.seed(8)
+f2 <- rnorm(300, mean=4, sd = 1.2)
+N.data <- cbind(f1, f2)
+
+# combine all samples
+data.mat <- data.frame(rbind(P.data, N.data), Class=rep(c(1, 0), time=c(nrow(P.data), nrow(N.data))))
+rownames(data.mat) <- paste("s", 1:(nrow(P.data)+nrow(N.data)), sep="")
+
+# plot data
+plot(subset(data.mat, Class==1)[,-3], col="red", pch=16, ylim=c(0, 9), xlim=c(0, 9), xlab="Feature 1", ylab="Feature 2")
+points(subset(data.mat, Class==0)[,-3], col="blue", pch=16)
+```
+
+## Classifier evaluation
+### Split the data into training (80%) and test set (20%)
+```{r}
+# Load the "caret" package. This package is used to partition data, training and test classification models etc.
+library(caret)
+set.seed(1)
+inTrain <- createDataPartition(data.mat$Class, p = .8)[[1]]
+dataTrain <- data.mat[ inTrain, ]
+dataTest  <- data.mat[-inTrain, ]
+```
+
+## demonstrate overfitting using test dataset
+```{r}
+library(class)
+accOnTrain <- c()
+accOnTest <- c()
+for(k in seq(21, 1, by=-2)) {
+  knnOnTrain <- knn(train=dataTrain[,-3], test=dataTrain[,-3], cl=dataTrain[,3], k=k)
+  knnOnTest <- knn(train=dataTrain[,-3], test=dataTest[,-3], cl=dataTrain[,3], k=k)
+  accOnTrain <- c(accOnTrain, sum(knnOnTrain == dataTrain[,3]) / nrow(dataTrain) * 100)
+  accOnTest <- c(accOnTest, sum(knnOnTest == dataTest[,3]) / nrow(dataTest) * 100)
+}
+
+plot(accOnTrain, type="b", col="blue", ylim=c(88, 100))
+lines(accOnTest, type="b", col="red")
+legend("topleft", c("Training", "Test"), col=c("blue", "red"), lty=c(1,1))
+```
+
+
+## Cross validation of classification
+```{r}
+source("/Users/pengyiyang/Dropbox/Teaching & Supervision/STAT500X/STAT5003_PY/Week 6/functions_w6.R")
+library(MASS)
+library(mlbench)
+data(Sonar)
+dim(Sonar)
+
+# create cross validation folds
+library(caret)
+set.seed(1)
+fold <- createFolds(Sonar$Class, k=10)
+# apply 10-fold cross-validation
+knn.TP <- knn.TN <- knn.FP <- knn.FN <- c()
+lda.TP <- lda.TN <- lda.FP <- lda.FN <- c()
+
+for(i in 1:length(fold)){
+    # true label for fold i
+    truth <- Sonar$Class[fold[[i]]]
+
+    # apply knn for classification
+    preds <- knn(Sonar[-fold[[i]],-61], Sonar[fold[[i]],-61], Sonar$Class[-fold[[i]]], k=5)
+    knn.TP <- c(knn.TP, sum((truth == preds)[truth == "M"]))
+    knn.TN <- c(knn.TN, sum((truth == preds)[truth == "R"]))
+    knn.FP <- c(knn.FP, sum((truth != preds)[truth == "R"]))
+    knn.FN <- c(knn.FN, sum((truth != preds)[truth == "M"]))
+    
+    # apply LDA for classification
+    lda.model <- lda(Class~., data=Sonar[-fold[[i]],])
+    pred.probs <- predict(lda.model, newdata=Sonar[fold[[i]],-61])$posterior[,"M"]
+    preds <- ifelse(pred.probs > 0.5, "M", "R")
+    lda.TP <- c(lda.TP, sum((truth == preds)[truth == "M"]))
+    lda.TN <- c(lda.TN, sum((truth == preds)[truth == "R"]))
+    lda.FP <- c(lda.FP, sum((truth != preds)[truth == "R"]))
+    lda.FN <- c(lda.FN, sum((truth != preds)[truth == "M"]))
+}
+
+evaluate(knn.TN, knn.FP, knn.TP, knn.FN)
+evaluate(lda.TN, lda.FP, lda.TP, lda.FN)
+```
+
+
+## Demonstration of bootstrap sampling for parameter estimation
+```{r, fig.width=7, fig.height=7}
+library(MASS)
+# suppose the true population is as follows:
+set.seed(2)
+population <- mvrnorm(10000, mu = c(0,0), Sigma = matrix(c(1,0.5,0.5,1.25), ncol = 2), empirical = TRUE)
+plot(population)
+
+# sampling from the population
+par(mfrow=c(2,2))
+for (i in 1:4) {
+  s <- population[sample(x=1:nrow(population), size=100, replace=TRUE),]
+  plot(s, pch=16, col="cyan4", xlab="X", ylab="Y")
+}
+
+# sampling 1000 times from the population and estimating alpha
+alpha.hats <- c()
+for(i in 1:1000) {
+  s <- population[sample(x=1:nrow(population), size=100, replace=TRUE),]
+  sigma.hats <- apply(s, 2, var)
+  cor.hat <- cor(s[,1], s[,2])
+  alpha.hats <- c(alpha.hats,  (sigma.hats[2] - cor.hat) / (sigma.hats[1] + sigma.hats[2] - 2*cor.hat))
+}
+
+# suppose now we only have one sample from the population and now need to rely on bootstrap approach
+s <- population[sample(x=1:nrow(population), size=100, replace=TRUE),]
+# bootstrap sampling from the single sample data and estimating alpha
+bs.alpha.hats <- c()
+for(i in 1:1000) {
+  bs <- s[sample(x=1:nrow(s), size=nrow(s), replace=TRUE),]
+  bs.sigma.hats <- apply(bs, 2, var)
+  bs.cor.hat <- cor(bs[,1], bs[,2])
+  bs.alpha.hats <- c(bs.alpha.hats,  (bs.sigma.hats[2] - bs.cor.hat) / (bs.sigma.hats[1] + bs.sigma.hats[2] - 2*bs.cor.hat))
+}
+
+# plot and compare alpha estimated from sampling from true population and bootstrap sampling from a single sample data
+par(mfrow=c(1, 3))
+hist(alpha.hats, col="gold")
+abline(v=0.6, col="pink", lwd=2)
+hist(bs.alpha.hats, col="cyan4")
+abline(v=0.6, col="pink", lwd=2)
+boxplot(alpha.hats, bs.alpha.hats, ylim=c(0.3, 0.9), col=c("gold", "cyan4"))
+abline(h=0.6, col="pink", lwd=2)
+```
+
+
+# Output session information
+```{r, echo=FALSE}
+sessionInfo()
+```

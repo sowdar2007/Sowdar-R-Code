@@ -1,0 +1,361 @@
+---
+title: "Project_Predict_Kinase_Substrate"
+author: "Raghu"
+date: "October 2, 2017"
+output: html_document
+---
+```{r libraries set up}
+install.packages("e1071")
+library(e1071)
+
+install.packages("MASS")
+library(MASS)
+
+install.packages("mlbench")
+library(mlbench)
+
+install.packages("class")
+library(class)
+
+install.packages("ClueR")
+library(ClueR)
+
+install.packages("caret")
+library(caret)
+
+install.packages("dismo")
+library(evaluate)
+
+
+
+
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+p_data <- read.delim(file="C:\\Users\\Raghuveer\\Documents\\SydneyUni\\Stat5003\\Project\\Final project\\Datasets\\InsulinPhospho.txt",header = T)
+
+fix(p_data)
+
+Akt_substrates <- read.delim(file="C:\\Users\\Raghuveer\\Documents\\SydneyUni\\Stat5003\\Project\\Final project\\Datasets\\Akt_substrates.txt",header = F)
+
+mTOR_substrates <- read.delim(file="C:\\Users\\Raghuveer\\Documents\\SydneyUni\\Stat5003\\Project\\Final project\\Datasets\\mTOR_substrates.txt",header = F)
+
+
+
+colnames(Akt_substrates) <- 'Identifier'
+Akt_F <- rep(1,nrow(Akt_substrates))
+Akt_substrates <- data.frame(cbind(Akt_substrates,Akt_F))
+
+fix(Akt_substrates)
+
+
+colnames(mTOR_substrates) <- 'Identifier'
+mTOR_F <- rep(1,nrow(mTOR_substrates))
+mTOR_substrates <- data.frame(cbind(mTOR_substrates,mTOR_F))
+fix(mTOR_substrates)
+
+data_merge1 <- merge(p_data,Akt_substrates,by='Identifier',all.x = TRUE,suffixes = c("_x","_y"))
+
+data_merge2 <- merge(data_merge1,mTOR_substrates,by='Identifier',all.x = TRUE,suffixes = c("_x","_y"))
+
+fix(data_merge2)
+
+seq_mid <- substr(data_merge2$Seq.Window,7,7)
+
+data_merge3 = cbind(data_merge2,seq_mid)
+
+fix(data_merge3)
+
+
+##setting non mTOR and non AKT flags as 0 instead of NA
+
+mTOR_F1 <- as.data.frame(ifelse(is.na(data_merge3$mTOR_F ),0,1))
+colnames(mTOR_F1) <- 'mTOR_F1'
+data_merge3 <- cbind(data_merge3,mTOR_F1)
+fix(data_merge3)
+
+Akt_F1 <- as.data.frame(ifelse(is.na(data_merge3$Akt_F ),0,1))
+colnames(Akt_F1) <- 'Akt_F1'
+data_merge3 <- cbind(data_merge3,Akt_F1)
+fix(data_merge3)
+
+
+
+summary(subset(data_merge3$seq_mid,data_merge3$Akt_F ==1))
+
+
+summary(subset(data_merge3$seq_mid,data_merge3$mTOR_F ==1))
+
+
+mTOR_Seq <- subset(data_merge2,data_merge2$mTOR_F == 1)
+Akt_Seq <- subset(data_merge2,data_merge2$Akt_F == 1)
+
+
+fix(mTOR_Seq)
+fix(Akt_Seq)
+
+
+summary(mTOR_Seq$Avg.Fold)
+summary(Akt_Seq$Avg.Fold)
+
+
+```
+
+##plotting the time series 
+```{r}
+#transpose the time-course data
+
+data.plot.Akt <- t(subset(data_merge3[,c(5,6,7,8,9,10,11,12)],data_merge3$Akt_F == 1))
+data.plot.mTOR <- t(subset(data_merge3[,c(5,6,7,8,9,10,11,12)],data_merge3$mTOR_F == 1))
+
+fix(data.plot)
+x_Akt <- c(15,30,60,120,300,600,1200,3600)
+x_mTOR <- c(15,30,60,120,300,600,1200,3600)
+fix(x_Akt)
+
+Akt.plot.x <- cbind(data.plot.Akt,x_Akt)
+mTOR.plot.x <- cbind(data.plot.mTOR,x_mTOR)
+
+?matplot
+
+matplot(Akt.plot.x[,ncol(Akt.plot.x)], data.plot.x[,1:ncol(Akt.plot.x)-1], type = "l",col = 1:ncol(Akt.plot.x)-1,pch=10)
+matplot(mTOR.plot.x[,ncol(mTOR.plot.x)], mTOR.plot.x[,1:ncol(mTOR.plot.x)-1], type = "l",col = 1:ncol(mTOR.plot.x)-1)
+
+
+```
+
+
+## Understanding sequences
+```{r}
+
+
+s1 <- substr(data_merge2$Seq.Window,1,1)
+s2 <- substr(data_merge2$Seq.Window,2,2)
+s3 <- substr(data_merge2$Seq.Window,3,3)
+s4 <- substr(data_merge2$Seq.Window,4,4)
+s5 <- substr(data_merge2$Seq.Window,5,5)
+s6 <- substr(data_merge2$Seq.Window,6,6)
+s7 <- substr(data_merge2$Seq.Window,7,7)
+s8 <- substr(data_merge2$Seq.Window,8,8)
+s9 <- substr(data_merge2$Seq.Window,9,9)
+s10 <- substr(data_merge2$Seq.Window,10,10)
+s11 <- substr(data_merge2$Seq.Window,11,11)
+s12 <- substr(data_merge2$Seq.Window,12,12)
+s13 <- substr(data_merge2$Seq.Window,13,13)
+
+data_seq <- cbind(data_merge3,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13)
+
+fix(data_seq)
+
+data_seq_sub <- subset(data_seq,(data_seq$mTOR_F ==1 | data_seq$Akt_F ==1))
+
+?order
+
+data_seq_sub <- data_seq_sub[order(data_seq_sub$mTOR_F,data_seq_sub$s7,data_seq_sub$s8,data_seq_sub$s9,data_seq_sub$s10,data_seq_sub$s11,data_seq_sub$s12,data_seq_sub$s13),]
+
+data_seq_all <- data_seq[order(data_seq$s7,data_seq$s8,data_seq$s9,data_seq$s10,data_seq$s11,data_seq$s12,data_seq$s13),]
+  
+fix(data_seq_all)
+
+
+```
+
+
+##Repeated random sampling
+
+```{r}
+set.seed(9)
+
+ss=subset(data_merge3,data_merge3$mTOR_F1 != 1)
+
+mTOR_sample <- data_merge3[sample(nrow(ss),size = 26,replace = FALSE),]
+
+
+
+data_model <- rbind(mTOR_sample,subset(data_merge3,data_merge3$mTOR_F1 == 1))
+
+fix(data_model)
+```
+## plotting average fold vs AUC for sample model data 
+```{r}
+plot(x=subset(data_model, mTOR_F1 == 0)$AUC,y=subset(data_model, mTOR_F1 == 0)$Avg.Fold,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5),xlab='AUC',ylab='Avg.Fold')
+points(x=subset(data_model, mTOR_F1 == 1)$AUC,y=subset(data_model, mTOR_F1 == 1)$Avg.Fold,col="red",pch=13)
+
+
+```
+
+
+##building a model
+
+```{r SVM iterate}
+
+svm_model <- function(dat, cl, d)
+{
+  for(deg in c(1:d))
+  {
+    svm.TP <- svm.TN <- svm.FP <- svm.FN <- c()
+    
+      ##svm_data <- dat[fold[[k]],]
+      svm.model <<- svm(dat, y=cl, kernel="polynomial", degree=deg, type="C-classification",cost=1,probability = TRUE)
+      prediction <- predict(svm.model, dat) 
+      
+      truth <- cl
+      
+      svm.TP <- c(svm.TP, sum((truth == prediction)[truth == "1"]))
+      svm.TN <- c(svm.TN, sum((truth == prediction)[truth == "0"]))
+      svm.FP <- c(svm.FP, sum((truth != prediction)[truth == "0"]))
+      svm.FN <- c(svm.FN, sum((truth != prediction)[truth == "1"]))
+    
+    res <- cbind(evaluate(svm.TN, svm.FP, svm.TP, svm.FN),Method = paste("SVM - Degree:",deg))
+    metrics <<- rbind(metrics,res)
+  }
+} 
+
+```
+
+```{r}
+
+set.seed(9)
+
+model <- function(dat,cl,d)
+{
+  metrics <<- data.frame()
+  svm_model(dat,cl,d)
+  ##lda_model(dat,cl)
+  ##knn_model(dat,cl)
+}
+
+#Model 1
+fix(model_data)
+dat <- data_model[,3:16]
+cl <- data_model$mTOR_F1
+
+model(dat,cl,5)
+
+
+```
+
+
+##Implementing multiple resampling same method as discussted in class also known as BAGGING
+
+##for MTOR
+
+```{r, warning=FALSE}
+library(caret)
+set.seed(123)
+
+subset_mtor <- which(data_merge3[,"mTOR_F1"] == 1)
+
+# the last variable is mtor flag in 0 and 1 
+mtor.class <- data_merge3[subset_mtor,c(3:16,20)]
+
+
+# create an ensemble of models and take the average of probabilities
+prediction.svm <- c()
+for(i in 1:50) {
+  ind <- sample(x=nrow(data_merge3[-subset_mtor,]),size = nrow(mtor.class),replace = FALSE)
+  
+#preparing positives and negatives data for training
+  model.data <- rbind(mtor.class,data_merge3[ind,c(3:16,20)])
+    
+svm.model <- svm(model.data[,-15], y=model.data[,15], kernel="polynomial", degree=3, type="C-classification",cost=1,probability = TRUE)
+
+#can have multiple models here
+  
+svm_prob_mtor <- predict(svm.model, newdata = data_merge3[,c(3:16)],probability = TRUE)
+svm_pred_Prob <- attr(svm_prob_mtor, "probabilities")[,1]
+
+
+  prediction.svm <- cbind(prediction.svm, svm_pred_Prob)
+}
+
+
+svm.avg.prob <- rowMeans(prediction.svm)
+
+svm.pred.class <- as.data.frame(ifelse(svm.avg.prob > 0.5, 1, 0))
+
+
+
+##we can only calculate the accuracy against the positive data after repeated resampling or ##bagging
+
+
+svm.accuracy <- sum(svm.pred.class[subset_mtor,] == mtor.class[,15]) / nrow(mtor.class)
+svm.accuracy
+
+
+
+
+#can have a discussion if the probability is 0.5 is more than 0.5
+
+```
+
+
+
+
+
+##for AKT
+
+```{r, warning=FALSE}
+library(caret)
+set.seed(123)
+
+subset_akt <- which(data_merge3[,"Akt_F1"] == 1)
+
+# the last variable is mtor flag in 0 and 1 
+akt.class <- data_merge3[subset_akt,c(3:16,21)]
+
+fix(akt.class)
+
+# create an ensemble of models and take the average of probabilities
+prediction.svm.akt <- c()
+for(i in 1:50) {
+  ind1 <- sample(x=nrow(data_merge3[-subset_akt,]),size = nrow(akt.class),replace = FALSE)
+  
+#preparing positives and negatives data for training
+  model.data <- rbind(akt.class,data_merge3[ind1,c(3:16,21)])
+    
+svm.model <- svm(model.data[,-15], y=model.data[,15], kernel="polynomial", degree=3, type="C-classification",cost=1,probability = TRUE)
+
+#can have multiple models here
+  
+svm_prob_akt <- predict(svm.model, newdata = data_merge3[,c(3:16)],probability = TRUE)
+svm_pred_Prob <- attr(svm_prob_akt, "probabilities")[,1]
+
+
+  prediction.svm.akt <- cbind(prediction.svm.akt, svm_pred_Prob)
+}
+
+
+svm.avg.prob <- rowMeans(prediction.svm.akt)
+
+svm.pred.class <- as.data.frame(ifelse(svm.avg.prob > 0.5, 1, 0))
+
+svm.accuracy.akt <- sum(svm.pred.class[subset_akt,] == akt.class[,15]) / nrow(akt.class)
+svm.accuracy.akt
+
+```
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -1,0 +1,210 @@
+---
+title: "Optimisation (STAT5003 2017)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+## Libraries to load
+```{r, warning=FALSE, message=FALSE}
+library(e1071)
+library(reshape2)
+library(ggplot2)
+library(ggbiplot)
+library(class)
+library(GA)
+```
+
+## Monte Carlo methods
+### Monte Carlo integration
+```{r}
+set.seed(1)
+# function to be integrated
+s <- function(x){(x^3) * sin((x+3.4)/2)}
+
+# plot data and create the true relationship line
+x.plot <- seq(0, 3, length.out=1000)
+y.plot <- s(x.plot)
+plot(x.plot, y.plot, xlab="x-values", ylab="y-values", main="f(x)", type="l", ylim=c(0, 4))
+abline(h=0, col="red")
+
+# Monte Carlo approach to identify maximum point of the function in a range of interest say 0 to 3
+mc.x <- runif(10000, min=0, max=3)
+max.y <- max(s(mc.x))
+max.y
+
+# now use the maximum estimated by Monte Carlo sampling to samply y with in the range of 1 to max.y
+mc.y <- runif(10000, min=0, max=max.y)
+plot(mc.x[1:1000], mc.y[1:1000], col="blue", xlab="x-values", ylab="y-values", main="f(x)")
+
+lines(x.plot, y.plot, type="l")
+abline(h=0, col="red")
+
+# count how many points fall below the curve
+area.ratio <- sum(mc.y < s(mc.x)) / 10000
+auc <- area.ratio * 3 * max.y
+auc
+```
+
+### Convergence of Monte Carlo estimate 
+```{r}
+estimates <- c()
+for(i in seq(10, length(mc.x), by=100)){
+  area.ratio <- sum(mc.y[1:i] < s(mc.x[1:i])) / length(mc.y[1:i])
+  auc <- area.ratio * 3 * max.y
+  estimates <- c(estimates, auc)
+}
+
+# plot Monte Carlo estimates with different sampling size
+plot(estimates, type="l", xlab="Sample size (x 100)", ylab="Integral estimates")
+```
+
+
+
+### Monte Carlo estimation of $\pi$
+```{r}
+# First create a function that we can simulate random points inside the square on the [-1,1] unit,
+# the value of Pi = 4(# random pts insid cirlce / # random pts in square)
+est.pi <- function(sampleSize) {
+    # Generate two vectors for random points in unit circle
+    x.pos <- runif(sampleSize, min=-1, max=1)
+    y.pos <- runif(sampleSize, min=-1, max=1)
+    # Test if points are inside the unit circle
+    pts.pos <- ifelse(x.pos^2 + y.pos^2 <= 1, TRUE, FALSE)
+    pts.in <- length(which(pts.pos == TRUE))
+    # Estimate Pi
+    return(4*(pts.in/sampleSize))
+}
+
+# estimate pi and plot convergence of Monte Carlo estimate 
+estimates <- c()
+for(i in seq(10, 100000, by=100)){
+  estimates <- c(estimates, est.pi(i))
+}
+
+# plot Monte Carlo estimates with different sampling size
+plot(estimates, type="l", xlab="Sample size (x 100)", ylab="Integral estimates")
+abline(h=3.1415926, col="red")
+```
+
+
+### Monte Carlo methods for feature selection
+```{r}
+sonar.raw <- read.delim("/Users/pengyiyang/Dropbox/research/Projects/Project_AdaSampling/data/sonar.txt", head=TRUE)
+sonar.dat <- sonar.raw[,-c(1, 62)]
+rownames(sonar.dat) <- paste("i", c(1:nrow(sonar.dat)), sep="")
+sonar.cls <- sonar.raw[,62]
+
+# Load the "caret" package for creating data partitions.
+library(caret)
+set.seed(1)
+inTrain <- createDataPartition(sonar.cls, p = .8)[[1]]
+sonarTrain <- sonar.dat[ inTrain, ]
+sonarTrain.cls <- sonar.cls[inTrain]
+sonarTest  <- sonar.dat[-inTrain, ]
+sonarTest.cls <- sonar.cls[-inTrain]
+
+# without feature selection
+knnOriginal <- knn(train=sonarTrain, test=sonarTest, cl=sonarTrain.cls, k=3)
+paste("accuracy without feature selection:", sum(knnOriginal == sonarTest.cls) / length(knnOriginal))
+
+# Monte Carlo optimisation for feature selection (selecting 10 features)
+evalFunction <- c()
+# internal 2-fold cross-validation partition for optimising function of feature space
+set.seed(1)
+fold <- createFolds(sonarTrain.cls, k=2);
+
+# Monte Carlo sampling
+optimalSet<- c()
+bestEval <- 0
+for(i in 1:5000) {
+  set.seed(i)
+  fs <- sample(1:ncol(sonar.dat), 5)
+
+  # evaluation of classification
+  predFold2 <- knn(train=sonarTrain[fold$Fold1, fs], test=sonarTrain[fold$Fold2, fs], cl=sonarTrain.cls[fold$Fold1], k=3)
+  predFold1 <- knn(train=sonarTrain[fold$Fold2, fs], test=sonarTrain[fold$Fold1, fs], cl=sonarTrain.cls[fold$Fold2], k=3)
+  accOnFold2 <- sum(predFold2 == sonarTrain.cls[fold$Fold2]) / length(predFold2)
+  accOnFold1 <- sum(predFold1 == sonarTrain.cls[fold$Fold1]) / length(predFold1)
+  currentEval <- (accOnFold2 + accOnFold1) / 2
+  evalFunction <- c(evalFunction, currentEval)
+  
+  if (bestEval < currentEval) {
+    bestEval <- currentEval
+    optimalSet <- fs
+  }
+}
+
+# with Monte Carlo feature selection
+knnFS <- knn(train=sonarTrain[,optimalSet], test=sonarTest[,optimalSet], cl=sonarTrain.cls, k=3)
+paste("accuracy with Monte Carlo feature selection:", sum(knnFS == sonarTest.cls) / length(knnFS))
+optimalSet
+hist(evalFunction)
+```
+
+
+### Genetic Algorithm (GA) for model selection
+```{r}
+# load data
+# set the current directory to be current Rmd file
+#path <- dirname(rstudioapi::getActiveDocumentContext()$path)
+#setwd(path)
+easy <- read.table("easysmooth.dat", header=T)
+x <- easy$X
+y <- easy$Y
+
+# The true relationship
+s <- function(x){(x^3) * sin((x+3.4)/2)}
+
+# plot data and create the true relationship line
+x.plot <- seq(min(x),max(x),length.out=1000)
+y.plot <- s(x.plot)
+plot(x, y, xlab="Predictor", ylab="Response", main="True relationship highlighted in red")
+lines(x.plot, y.plot, lty=1, lwd=2, col="red")
+```
+
+#### applying GA optimisation
+```{r}
+library(caret)
+set.seed(1)
+# define function for optimisation
+f <- function(d){
+  train <- createDataPartition(x, p = .8)[[1]]
+  xt <- x[train]
+  yt <- y[train]
+  lm.fit <- lm(yt ~ poly(xt, degree=round(d)))
+  y.pred <- predict(lm.fit, data.frame(xt=x[-train]), interval="prediction")[,"fit"]
+  rss <- sum((y[-train] - y.pred)^2)
+  return(rss)
+}
+# convert the function for optimisation into fitness function
+fitness <- function(d){-f(d)}
+
+# apply GA
+GA <- ga(type = "real-valued", fitness = fitness, min = 1, max = 10, maxiter = 50)
+summary(GA)
+plot(GA)
+GA@solution
+```
+
+
+```{r}
+# fit the data with models with optimal polynomial degree found by an optimisation method
+lm.fit <- lm(y ~ poly(x, degree=round(GA@solution)))
+y.pred <- predict(lm.fit, data.frame(x=x.plot), interval="prediction")[,"fit"]
+plot(x, y, xlab="Predictor", ylab="Response", main="polynomial fit")
+lines(x.plot, y.plot, lty=1, lwd=2, col="red")
+lines(x.plot, y.pred, col = "blue", lty = 2, lwd=4)
+```
+
+
+
+# Output session information
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+
+
+
+

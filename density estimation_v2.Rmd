@@ -1,0 +1,172 @@
+---
+title: "Density estimation (STAT5003 2016)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+#runtime: shiny
+---
+
+## Learning objective
+The aim in this lecture is to understand the basic concepts in density estimation from a single random variable.
+
+## Libraries to load
+```{r, warning=FALSE, message=FALSE}
+#install.packages("deamer")
+#library(deamer)
+library(MASS)
+library(RColorBrewer)
+library(polspline)
+```
+
+## Histograms
+Histograms are a simple way for estimating density of a univariate variable. We will demonstrate histogram and kernel density estimation methods using a simulated bimodel dataset.
+
+Bimodel dataset can be download from the course webpage. It contains sample of 100 points from an equally weighted Gaussian mixture of N(4, 12) and N(9, 22) densities. 
+
+```{r, warning=FALSE, message=FALSE, fig.width=8, fig.height=9}
+# set the current directory to be current Rmd file
+# path <- dirname(rstudioapi::getActiveDocumentContext()$path)
+# setwd(path)
+
+# load a bimodel dataset for demonstration
+x <- read.table("bimodal.txt", header=FALSE)[,1]
+par(mfrow=c(2,2))
+hist(x, probability=FALSE, main="Summarise counts in each bin")
+hist(x, probability=TRUE, main="Summarise data density in each bin")
+hist(x, probability=TRUE, main="#Bin of 10", breaks=10)
+hist(x, probability=TRUE, main="#Bin of 20", breaks=20)
+```
+
+## Parametric density estimation
+### 
+```{r}
+hist(x, col="lightblue", breaks=10, probability = TRUE, xlim=c(-2, 14))
+
+# formulate the log-likelihood function
+LL <- function(mu, sigma) {
+     R <- suppressWarnings(dnorm(x, mu, sigma))
+     -sum(log(R))
+}
+
+library(stats4)
+fit <- mle(LL, start = list(mu = 5, sigma=5))
+attributes(fit)$coef
+
+range <- seq(-2, 14, length=1000)
+f <- dnorm(range,mean=attributes(fit)$coef[1], sd=attributes(fit)$coef[2])
+lines(range, f, lwd=2, col="red")
+
+```
+
+
+## Kernel density estimation
+### Selection of different kernels
+```{r, warning=FALSE, message=FALSE, fig.width=8, fig.height=9}
+x <- as.numeric(read.table("bimodal.txt", header=T)[,1])
+range <- seq(min(x)-sd(x), max(x)+sd(x), length.out=1000)
+
+# set bandwidth 
+h <- 0.69
+
+# estimate density of x using different kernels
+d1 <- density(x, bw=h, kernel="epanechnikov")
+d2 <- density(x, bw=h, kernel="triangular")
+d3 <- density(x, bw=h, kernel="gaussian")
+d4 <- density(x, bw=h, kernel="biweight")
+
+# Ouput estimated densities
+par(mfrow=c(2,2))
+hist(x, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Epanechnikov")
+lines(d1, lwd=2, col="red")
+hist(x, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Triangular")
+lines(d2, lwd=2, col="red")
+hist(x, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Normal")
+lines(d3, lwd=2, col="red")
+hist(x, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Biweight")
+lines(d4, lwd=2, col="red")
+```
+
+
+
+### Effect of bandwith
+```{r, warning=FALSE, message=FALSE, fig.width=8, fig.height=6}
+source("functions.R")
+# read in data
+x <- as.numeric(read.table("bimodal.txt", header=T)[,1])
+
+# test different bandwiths
+h <- c(0.3, 0.625, 1.875)
+
+# using Gaussian kernel with different bandwiths to estimate density of y 
+d1 <- density(x, bw = h[1], kernel = "gaussian")
+d2 <- density(x, bw = h[2], kernel = "gaussian")
+d3 <- density(x, bw = h[3], kernel = "gaussian")
+
+# plot estimation results
+hist(x, breaks=20, freq=FALSE, col="gray")
+lines(d1$x, d1$y, col="red")
+lines(d1, col="gold", lwd=3)
+lines(d2$x, d2$y, lwd=2, col="blue3")
+lines(d3$x, d3$y, lty=2, col="green4")
+```
+
+
+## Performance measurement using cross-validation
+We will demonstrate cross-validation using the whale migration data set.
+
+Brief description whale migration data:
+Sighting times for 121 bowhead whale calves passing Point Barrow, Alaska, during the 2001 spring migration. Times are expressed as hours since midnight, April 5, when the first adult whale was spotted during the visual census effort.
+
+```{r}
+x <- as.numeric(read.table("whalemigration.txt", header=T)[,1])
+
+# Use cross-validation to select bandwidth
+h.bcv <- bw.bcv(x)
+
+# Estimate density of x using Gaussian kernel and bandwidth selected by cross-validation method.
+d.bcv <- density(x, bw=h.bcv, kernel="gaussian")
+
+# Output bandwidth selected by each method 
+h.bcv
+
+## Plot estimation results
+hist(x, breaks=20, freq=FALSE, col="gray")
+lines(d.bcv, col="green4", lwd=2)
+```
+
+
+## Density estimation using spline
+Spline is an alternative approach for density estimation.
+
+```{r, warning=FALSE, message=FALSE, fig.width=10, fig.height=8}
+x <- as.numeric(read.table("whalemigration.txt", header=T)[,1])
+
+## Apply logspline to estimate density of x
+fit1 <- logspline(x)
+fit2 <- logspline(x, nknots=5)
+fit3 <- logspline(x, nknots=10)
+
+## Output optimal fit based on BIC
+fit1
+
+## Plots
+hist(x,breaks=20,freq=FALSE, ylim=c(0, 0.02))
+plot(fit1, add=T)
+plot(fit2, add=T,lty=2)
+plot(fit3, add=T,lty=3)
+
+points(fit1$knots,rep(0,7),pch=21,cex=2,bg="white")
+points(fit2$knots,rep(0,7),pch=21,cex=1,bg="black")
+points(fit3$knots,rep(0,7),pch="*",cex=2, col="red")
+```
+
+
+# Output session information
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+
+
+
+

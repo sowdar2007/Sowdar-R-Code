@@ -1,0 +1,304 @@
+---
+title: "Feature (model) selection (STAT5003 2017)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+## Libraries to load
+```{r, warning=FALSE, message=FALSE}
+library(limma)
+library(gplots)
+library(class)
+```
+
+
+## Feature selection and classification on Sonar dataset
+This is the data set used by Gorman and Sejnowski in their study of the classification of sonar signals using a neural network [1]. The task is to train a network to discriminate between sonar signals bounced off a metal cylinder and those bounced off a roughly cylindrical rock. Each pattern is a set of 60 numbers in the range 0.0 to 1.0. Each number represents the energy within a particular frequency band, integrated over a certain period of time. The integration aperture for higher frequencies occur later in time, since these frequencies are transmitted later during the chirp. The label associated with each record contains the letter "R" if the object is a rock and "M" if it is a mine (metal cylinder). The numbers in the labels are in increasing order of aspect angle, but they do not encode the angle directly.
+
+References
+Gorman, R. P., and Sejnowski, T. J. (1988). "Analysis of Hidden Units in a Layered Network Trained to Classify Sonar Targets" in Neural Networks, Vol. 1, pp. 75-89.
+
+Newman, D.J. & Hettich, S. & Blake, C.L. & Merz, C.J. (1998). UCI Repository of machine learning databases [http://www.ics.uci.edu/~mlearn/MLRepository.html]. Irvine, CA: University of California, Department of Information and Computer Science.
+
+
+```{r, warning=FALSE, message=FALSE}
+# load data
+library(mlbench)
+data(Sonar)
+dim(Sonar)
+```
+
+### partition the data into training and testing sets
+```{r}
+library(caret)
+set.seed(123)
+inTrain <- createDataPartition(Sonar$Class, p = .5)[[1]]
+SonarTrain <- Sonar[ inTrain,]
+SonarTest  <- Sonar[-inTrain,]
+```
+
+
+### Filter feature selection
+#### Simple approach: fold change
+```{r}
+SonarTrain.byClass <- split(SonarTrain[,-61], SonarTrain$Class)
+feature.mean.byClass <- sapply(SonarTrain.byClass, colMeans)
+
+# calculate fold change of features by class and take the absolute of its log value
+feature.foldChange <- abs(log2(feature.mean.byClass[,1] / feature.mean.byClass[,2]))
+
+# sort the features by fold change
+feature.sorted <- sort(feature.foldChange, decreasing=TRUE)
+
+# select the top 10 features
+filtered.features1 <- names(feature.sorted)[1:10]
+filtered.features1
+
+# fitting the classifier on full expression dataset
+knn.full <- knn(train=SonarTrain[,-61], test=SonarTest[,-61], cl=SonarTrain$Class, k=5, prob=TRUE)
+table(knn.full, SonarTest$Class)
+
+# fitting the classifier on top 10 filtered features
+knn.filtered <- knn(train=SonarTrain[,filtered.features1], test=SonarTest[,filtered.features1], cl=SonarTrain$Class, k=5, prob=TRUE)
+table(knn.filtered, SonarTest$Class)
+```
+
+
+#### More sophisticated approach based on t-test
+```{r, warning=FALSE, message=FALSE}
+SonarTrain.byClass <- split(SonarTrain[,-61], SonarTrain$Class)
+
+# perform a t-test
+feature.pvalues <- c()
+for(i in 1:(ncol(SonarTrain)-1)) {
+  feature.pvalues <- c(feature.pvalues, t.test(SonarTrain.byClass[[1]][,i], SonarTrain.byClass[[2]][,i])$p.value)
+}
+names(feature.pvalues) <- colnames(SonarTrain[,-61])
+
+# filter the top 10 most discriminative features based on p-values
+filtered.features2 <- names(sort(feature.pvalues)[1:10])
+
+# fitting the classifier on full expression dataset
+knn.full <- knn(train=SonarTrain[,-61], test=SonarTest[,-61], cl=SonarTrain$Class, k=5, prob=TRUE)
+table(knn.full, SonarTest$Class)
+
+# fitting the classifier using top 10 filtered features by fold change
+knn.filtered <- knn(train=SonarTrain[,filtered.features1], test=SonarTest[,filtered.features1], cl=SonarTrain$Class, k=5, prob=TRUE)
+table(knn.filtered, SonarTest$Class)
+
+# fitting the classifier on top 10 filtered features by moderated t-test
+knn.filtered <- knn(train=SonarTrain[,filtered.features2], test=SonarTest[,filtered.features2], cl=SonarTrain$Class, k=5, prob=TRUE)
+table(knn.filtered, SonarTest$Class)
+```
+
+#### Visualise the features selected by filtering step using clustered "heatmap"
+```{r}
+library(gplots)
+classcolors <- sapply(as.character(SonarTrain$Class), switch, R = "green3", M = "orange3")
+SonarFiltered <- t(apply(SonarTrain[,filtered.features2], 2, as.numeric))
+
+heatmap.2(SonarFiltered, col=bluered(75), ColSideColors=classcolors, density.info="none", trace="none", na.color = "black", margins=c(8, 8), main="Clustering by top 10 filtered features", dendrogram = "column")
+```
+
+
+
+## Wrapper feature selection
+### Forward stepwise selection
+```{r}
+selectFeature <- function(train, test, cls.train, cls.test, features) {
+  ## identify a feature to be selected
+  current.best.accuracy <- -Inf
+  selected.i <- NULL
+  for(i in 1:ncol(train)) {
+    current.f <- colnames(train)[i]
+    if(!current.f %in% features) {
+      model <- knn(train=train[,c(features, current.f)], test=test[,c(features, current.f)], cl=cls.train, k=3)
+      test.acc <- sum(model == cls.test) / length(cls.test)
+      
+      if(test.acc > current.best.accuracy) {
+        current.best.accuracy <- test.acc
+        selected.i <- colnames(train)[i]
+      }
+    }
+  }
+  return(selected.i)
+}
+
+
+##
+library(caret)
+set.seed(1)
+inTrain <- createDataPartition(Sonar$Class, p = .6)[[1]]
+allFeatures <- colnames(Sonar)[-61]
+train <- Sonar[ inTrain,-61]
+test  <- Sonar[-inTrain,-61]
+cls.train <- Sonar$Class[inTrain]
+cls.test <- Sonar$Class[-inTrain]
+
+# use correlation to determine the first feature
+cls.train.numeric <- rep(c(0, 1), c(sum(cls.train == "R"), sum(cls.train == "M")))
+features <- c()
+current.best.cor <- 0
+for(i in 1:ncol(train[,-61])) {
+  if(current.best.cor < abs(cor(train[,i], cls.train.numeric))) {
+    current.best.cor <- abs(cor(train[,i], cls.train.numeric))
+    features <- colnames(train)[i]
+  }
+}
+print(features)
+
+# select the 2 to 10 best features using knn as a wrapper classifier
+for (j in 2:10) {
+  selected.i <- selectFeature(train, test, cls.train, cls.test, features)
+  print(selected.i)
+
+  # add the best feature from current run
+  features <- c(features, selected.i)
+}
+```
+
+### Classify on the two types of sampels using the full dataset compared to using top 10 wrapper selected features
+```{r}
+# fitting the classifier on top 10 wrapper selected features
+knn.fit3 <- knn(train=SonarTrain[,features], test=SonarTest[,features], cl=SonarTrain$Class, k=5, prob=TRUE)
+table(knn.fit3, SonarTest$Class)
+```
+
+### Backward stepwise selection
+
+```{r}
+## This function identifies a feature to be removed
+eliminateFeature <- function(train, test, cls.train, cls.test) {
+  
+  current.best.acc <- -Inf
+  selected.i <- NULL
+  
+  # exclude each of all remaining features in "train" dataset (one at a time) and compute test accuracy on "test" dataset
+  for(i in 1:ncol(train)) {
+    # (1) train the knn model
+    # please implement your code here
+    
+    # (2) compute test accuracy
+    # please implement your code here
+    
+    # (3) record the feature if the test accuracy is the highest so far
+    if(test.acc > current.best.acc) {
+      current.best.acc <- test.acc
+      selected.i <- colnames(train)[i]
+    }
+  }
+  
+  # return the selected feature i
+  return(selected.i)
+}
+
+
+## initiate and partition data
+library(caret)
+set.seed(1)
+inTrain <- createDataPartition(Sonar$Class, p = .6)[[1]]
+train <- Sonar[ inTrain,-61]
+test  <- Sonar[-inTrain,-61]
+cls.train <- Sonar$Class[inTrain]
+cls.test <- Sonar$Class[-inTrain]
+
+for(j in 1:20) {
+  # identify a feature to be removed
+  selected.i <- eliminateFeature(train, test, cls.train, cls.test)
+  print(selected.i)
+  
+  # remove the feature selected by the elimination function
+  del <- which(colnames(train) %in% selected.i)
+  
+  # update the "train" and "test" dataset
+  # please implement your code here
+}
+```
+
+## Rigid and Lasso regression for regressing problems.
+### Load the example data "Hitters" from "ISLR" package
+```{r}
+library (ISLR)
+names(Hitters)
+dim(Hitters)
+sum(is.na(Hitters$Salary))
+
+# remove the instance that contains missing values
+Hitters <- na.omit(Hitters)
+dim(Hitters)
+sum(is.na(Hitters))
+
+# create learning matrix X and regression response variable Y
+x <- model.matrix (Salary~., Hitters)[,-1] 
+y <- Hitters$Salary
+
+# partition the data into training and test sets (50% each)
+set.seed(1) 
+train <- sample(1:nrow(x), nrow(x)/2)
+test <- -train
+y.test <- y[test]
+```
+
+### Ridge regression
+glmnet package implements Ridge and Lasso regressions and anything in between
+```{r}
+library(glmnet)
+# set the range of lambda values to be tested.
+grid <- 10^seq(10,-2, length=100)
+
+# alpha is the elasticnet mixing parameter with 0 correspond to Ridge regression and 1 correspond to Lasso and anything in between correspond to elastic net
+ridge.mod <- glmnet(x[train,], y[train], alpha=0, lambda=grid)
+dim(coef(ridge.mod))
+plot(ridge.mod, "lambda", label=TRUE)
+
+# we can use cross-validation to deterime optimal lambda value. This is implemented as a function in glmnet package.
+set.seed(1)
+cv.out <- cv.glmnet(x[train,], y[train], alpha=0)
+plot(cv.out)
+bestlam <- cv.out$lambda.min 
+bestlam
+
+# we then predict on the test data using optimal lambda determined by CV
+ridge.pred <- predict(ridge.mod, s=bestlam, newx=x[test,])
+# and compute the MSE
+mean((ridge.pred - y.test)^2)
+
+# Rigit for feature selection?
+ridge.coef <- predict(ridge.mod, type="coefficients", s=bestlam)[1:20,]
+ridge.coef
+which(abs(ridge.coef) > 5)
+```
+
+### Lasso regression
+```{r}
+## Lasso model 
+lasso.mod <- glmnet(x[train,], y[train], alpha=1, lambda=grid)
+dim(coef(lasso.mod))
+plot(lasso.mod, "lambda", label=TRUE)
+
+set.seed (1)
+# Using cross-validation for Lasso to find the best lambda (based on cvm "mean cross-validated error")
+cv.lasso <- cv.glmnet (x[train,], y[train], alpha=1)
+plot(cv.lasso)
+bestlam <- cv.lasso$lambda.min 
+# predict on test set using optimal lambda value estimated by CV
+lasso.pred <- predict (lasso.mod, s=bestlam, newx=x[test,]) 
+# compute MSE
+mean((lasso.pred -y.test)^2)
+
+# Lasso for feature selection
+lasso.coef=predict(lasso.mod, type="coefficients", s=bestlam)[1:20,]
+lasso.coef
+```
+
+
+# output session information
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+
+
+
+

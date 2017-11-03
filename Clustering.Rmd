@@ -1,0 +1,209 @@
+---
+title: "Clustering (STAT5003 2017)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+## Learning objective
+The aim in this lecture is to understand and apply various clustering algorithms for exploratory data analysis.
+
+## Libraries to load
+```{r, warning=FALSE, message=FALSE}
+library(limma)
+library(gplots)
+library(e1071)
+library(shiny)
+```
+
+
+## Application of clustering algorithms to Leukemia dataset
+ExpressionSet containing gene expresion data from 60 bone marrow samples of patients with one
+of the four main types of leukemia (ALL, AML, CLL, CML) or no-leukemia controls.
+
+Platform: Affymetrix Human Genome U133 Plus 2.0  
+
+Annotation: genemapperhgu133plus2 (CDF from GATExplorer)
+
+Mapping: Gene Ensembl ID (20172 features)
+
+Tissue: Bone Marrow
+
+Cell type: Mononuclear cells isolated by Ficoll density centrifugation
+
+Disease type:  
+1. Acute Lymphoblastic Leukemia (ALL). Subtype: c-ALL / pre-B-ALL without t(9;22)  
+2. Acute Myeloid Leukemia (AML). Subtype: Normal karyotype  
+3. Chronic Lymphocytic Leukemia (CLL)  
+4. Chronic Myeloid Leukemia (CML)  
+5. Non-leukemia and healthy bone marrow (NoL)  
+
+All samples were obtained from untreated patients at the time of diagnosis.
+Preprocessing: The microarrays were normalized with RMA using a redefined probe mapping from
+Affymetrix probesets to Ensembl genes (Ensembl IDs ENSG). This alternative Chip Definition
+File (CDF) with complete unambiguous mapping of microarray probes to genes (GeneMapper)
+is available at GATExplorer (http://bioinfow.dep.usal.es/xgate/mapping/mapping.php) (Risueno et
+al. 2010).
+
+
+```{r, warning=FALSE, message=FALSE}
+# load data
+library(leukemiasEset)
+data(leukemiasEset)
+# extract expression matrix from the "ExpressionSet object"
+leukemia.mat <- exprs(leukemiasEset)
+# obtain and summarize phenodata
+phenodata <- pData(leukemiasEset)
+```
+
+
+## hierarchical clustering analysis of Leukemia dataset
+```{r, warning=FALSE, message=FALSE, fig.width=12, fig.height=12}
+labs <- phenodata[,"LeukemiaType"]
+#
+par(mfrow=c(3,1))
+data.dist=dist(t(leukemia.mat))
+plot(hclust(data.dist), labels=labs, main="Complete Linkage", xlab="", sub="",ylab="", cex=1.3)
+plot(hclust(data.dist, method="average"), labels=labs, main="Average Linkage", xlab="", sub="",ylab="", cex=1.3)
+plot(hclust(data.dist, method="single"), labels=labs,  main="Single Linkage", xlab="", sub="",ylab="", cex=1.3)
+
+hc.out=hclust(dist(t(leukemia.mat)))
+hc.clusters = cutree(hc.out, 5)
+table(hc.clusters, labs)
+
+par(mfrow=c(1,1))
+plot(hc.out, labels = labs)
+abline(h=139, col="red")
+hc.out
+```
+
+### Identify and select differentially expressed genes from Leukemia dataset using LIMMA package
+
+```{r, warning=FALSE, message=FALSE}
+# create the design matrix
+f = phenodata[colnames(leukemia.mat), 3]
+design = model.matrix(~ f - 1)
+colnames(design) <- c("ALL", "AML", "CLL", "CML", "NoL")
+design
+fit <- lmFit(leukemia.mat , design) # fitting data to a linear model
+contrast.matrix <- makeContrasts(ALL-NoL, AML-NoL, CLL-NoL, CML-NoL, levels=design)  # defining group comparisons
+fit2 <- contrasts.fit(fit, contrast.matrix) # convert the coefficients of the design matrix into these 4 contrasts which are to be tested equal to zero
+fit2 <- eBayes(fit2) # With a series of related parameter estimates & standard errors, eBayes computes moderated t-statistics of differential expression by empirical Bayes shrinkage of the standard errors towards a common value.
+leukemia.topDE <-leukemia.mat[order(fit2$F.p.value), ][1:500,] # Select the top 500 most differentially expressed genes
+dim(leukemia.topDE)
+```
+
+### Use heatmap to visualize hierarchical clustering results
+```{r, fig.width=12, fig.height=12}
+patientcolors = sapply(as.character(f), switch, ALL = "red", AML =  "orange", CLL = "blue",  CML="green", NoL="gray")
+heatmap.2(leukemia.topDE, col=bluered(75), ColSideColors=patientcolors, density.info="none", trace="none", na.color = "black", margins=c(8, 8), main="Clustering of top500 DE genes", dendrogram = "column")
+```
+
+
+## k-means based clustering algorithms
+
+### Apply k-means clustering on iris data
+```{r, fig.width=10, fig.height=10}
+dim(iris)
+head(iris)
+table(iris$Species)
+class(iris)
+
+# set up plots
+par(mfrow=c(2,2))
+# plot original data
+speciesColors = sapply(as.character(iris$Species), switch, setosa = "red", versicolor = "blue",  virginica="green")
+data.mat <- cbind(iris$Petal.Length, iris$Sepal.Width, iris$Species)
+colnames(data.mat) <- c("Petal.Length", "Sepal.Width", "Species")
+plot(data.mat[,-3], col=speciesColors, main="orignal data with class information")
+
+# apply k-means with k=2
+set.seed(1)
+km.out2 <- kmeans(data.mat[,-3], centers=2)
+plot(data.mat[,-3], col=(km.out2$cluster+1), main="k-means clustering results with k=2", xlab="f1", ylab="f2", pch=20, cex=2)
+
+# apply k-means with k=3
+set.seed(1)
+km.out3 <- kmeans(data.mat[,-3], centers=3)
+plot(data.mat[,-3], col=(km.out3$cluster+1), main="k-means clustering results with k=3", xlab="f1", ylab="f2", pch=20, cex=2)
+
+# apply k-means with k=4
+set.seed(1)
+km.out4 <- kmeans(data.mat[,-3], centers=4)
+plot(data.mat[,-3], col=(km.out4$cluster+1), main="k-means clustering results with k=4", xlab="f1", ylab="f2", pch=20, cex=2)
+```
+
+### Cluster statitics
+```{r}
+# what is the output from k-means clustering?
+km.out2
+
+# check between and within cluster sum of squares.
+km.out2$betweenss
+km.out2$tot.withinss
+
+km.out3$betweenss
+km.out3$tot.withinss
+
+km.out4$betweenss
+km.out4$tot.withinss
+```
+
+### Application of c-means clustering
+notice that we use the **membership** score to control the size of the point to plot. k-means clustering algorithm will not create membership score and will create a hard clustering whereas c-means gives membership score which can be used as a confidence meansure of clustering for each sample. 
+```{r fig.width=10, fig.height=10}
+# set up plots
+par(mfrow=c(2,2))
+# apply c-means with k=1
+set.seed(1)
+cm.out2 <- cmeans(data.mat[,-3], centers=2, m = 2)
+plot(data.mat[,-3], col=(cm.out2$cluster+1), main="c-means clustering results with k=2", xlab="f1", ylab="f2", pch=20, cex=apply(cm.out2$membership, 1, max)^2)
+
+# apply c-means with k=3
+set.seed(1)
+cm.out3 <- cmeans(data.mat[,-3], centers=3)
+plot(data.mat[,-3], col=(cm.out3$cluster+1), main="c-means clustering results with k=3", xlab="f1", ylab="f2", pch=20, cex=apply(cm.out2$membership, 1, max)^2)
+
+# apply c-means with k=4
+set.seed(1)
+cm.out4 <- cmeans(data.mat[,-3], centers=4)
+plot(data.mat[,-3], col=(cm.out4$cluster+1), main="c-means clustering results with k=4", xlab="f1", ylab="f2", pch=20, cex=apply(cm.out2$membership, 1, max)^2)
+```
+
+## Clustering results validation
+### data structure based metrics
+The internal measures include the connectivity, and Silhouette Width, and Dunn Index. The connectivity indicates the degree of connectedness of the clusters, as determined by the k-nearest neighbors. The neighbSize argument specifies the number of
+neighbors to use. The connectivity has a value between 0 and infinity and should be minimized.
+Both the Silhouette Width and the Dunn Index combine measures of compactness and
+separation of the clusters. The Silhouette Width is the average of each observation's Silhouette value. The Silhouette value measures the degree of confidence in a particular clustering assignment and lies in the interval [-1,1], with well-clustered observations having values near 1 and poorly clustered observations having values near -1. 
+
+```{r, warning=FALSE, fig.width=10, fig.height=10}
+library(clValid) # clValid is a package that containing various cluster validation methods
+intern <- clValid(data.mat[,-3], nClust=2:10, validation="internal", clMethods=c("hierarchical","kmeans", "pam"))
+summary(intern)
+optimalScores(intern)
+# set up plots
+par(mfrow=c(2,2))
+plot(intern)
+```
+
+
+### stability based metrics
+The stability measures evaluate the stability of a clustering result by comparing it with the clusters obtained by removing one column at a time. These measures include the average proportion of non-overlap (APN), the average distance (AD), the average distance between means (ADM), and the figure of merit (FOM). The APN, AD, and ADM are all based on the cross-classification table of the original clustering with the clustering based on the removal of one column. The APN measures the average proportion of observations not placed in the same cluster under both cases, while the AD measures the average distance between observations placed in the same cluster under both cases and the ADM measures the average distance between cluster centers for observations placed in the same cluster under both cases. The FOM measures the average intra-cluster variance of the deleted column, where the clustering is based on the remaining (undeleted) columns. In all cases the average is taken over all the deleted columns, and all measures should be minimized.
+
+```{r, warning=FALSE, fig.width=10, fig.height=10}
+par(mfrow=c(2,2))
+stab <- clValid(iris[,-5], nClust=2:10, validation="stability", clMethods=c("hierarchical", "kmeans", "pam"))
+optimalScores(stab)
+plot(stab)
+```
+
+# output session information
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+
+
+
+

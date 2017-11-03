@@ -1,0 +1,134 @@
+---
+title: "Trees and ensemble models (STAT5003 2017)"
+author: "Pengyi Yang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+## Learning objective
+The aim in this section is to understand concepts and implementations of trees and their ensemble models
+
+## Libraries to load
+```{r, warning=FALSE, message=FALSE}
+library(tree)
+```
+
+## Single tree based methods 
+### Classification tree
+```{r}
+subset <- which(iris[,"Species"] == "virginica" | iris[,"Species"] == "versicolor")
+tree.model <- tree(Species~., data=iris[subset,])
+summary(tree.model)
+
+# visualizing the fitted tree model
+plot(tree.model)
+text(tree.model)
+
+# display fitted tree model
+tree.model
+```
+
+### Regression tree
+This section introduce regression tree using housing value dataset of Boston suburbs
+```{r}
+library(MASS) 
+set.seed (1)
+train <- sample(1: nrow(Boston ), nrow(Boston )/2)
+
+# medv: median value of owner-occupied homes in $1000s.
+tree.boston <- tree(medv~., Boston, subset=train) 
+summary (tree.boston)
+plot(tree.boston) 
+text(tree.boston)
+
+# check the RSS of thre prediction
+yhat <- predict(tree.boston, newdata=Boston[-train ,])
+boston.test <- Boston[-train, "medv"]
+plot(yhat, boston.test) 
+abline(0,1)
+mean((yhat -boston.test)^2)[1]
+```
+
+## Tree ensembles
+
+### Implement bagging ourselves
+We aim for two class classification here, noting that extension to multiclass problem is trivial. 
+```{r, warning=FALSE}
+library(caret)
+set.seed(123)
+subset <- which(iris[,"Species"] == "virginica" | iris[,"Species"] == "versicolor")
+iris.2class <- iris[subset,]
+inTrain <- createDataPartition(iris.2class[,"Species"], p = 0.5)[[1]]
+iris.train <- iris.2class[inTrain,]
+iris.test <- iris.2class[-inTrain,]
+dim(iris.test)
+head(iris.test)
+# single tree classification 
+tree.model <- tree(Species~., data=iris.train)
+tree.preds <- predict(tree.model, newdata = iris.test[,-5])
+tree.classified <- ifelse(tree.preds[,"virginica"] > 0.5, "virginica", "versicolor")
+tree.accuracy <- sum(tree.classified == iris.test[,5]) / nrow(iris.test)
+tree.accuracy
+
+# create bagging (a type of ensemble)
+bagging.prediction <- c()
+for(i in 1:50) {
+  idx <- sample(x=1:nrow(iris.2class), size=nrow(iris.train), replace = TRUE)
+  tree.model <- tree(Species~., data=iris.train[idx,])
+  bagging.prediction <- cbind(bagging.prediction, predict(tree.model, newdata = iris.test[,-5])[,"virginica"])
+}
+
+bagging.classified <- ifelse(rowMeans(bagging.prediction) > 0.5, "virginica", "versicolor")
+bagging.accuracy <- sum(bagging.classified == iris.test[,5]) / nrow(iris.test)
+bagging.accuracy
+```
+
+
+### Bagging (use randomForest package)
+```{r}
+# Since if we use all the available features for each split, random forest will reduce into bagging. Here we testing bagging by using random forest package and allowing the use of all features.
+library(randomForest)
+set.seed(1)
+
+# Bagging for classification
+dim(iris)
+bag.iris <- randomForest(Species~., data=iris, importance=TRUE, mtry=4)
+print(bag.iris)
+bag.iris$importance
+
+# Bagging for regression
+dim(Boston)
+bag.boston <- randomForest(medv~., data=Boston, subset=train, mtry=13, importance=TRUE)
+print(bag.boston)
+bag.boston$importance
+```
+
+
+
+### Random forest
+```{r}
+set.seed(1)
+
+# Random forest for classification
+dim(iris)
+bag.iris <- randomForest(Species ~ ., data=iris, importance=TRUE, mtry=1)
+print(bag.iris)
+bag.iris$importance
+
+# Random forest for regression
+dim(Boston)
+rf.boston <- randomForest(medv~., data=Boston, subset=train, mtry=6, importance=TRUE)
+print(rf.boston)
+varImpPlot(rf.boston)
+```
+
+
+# Output session information
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+
+
+
+
