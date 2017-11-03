@@ -1,6 +1,6 @@
 ---
-title: "Optimisation (STAT5003 2017)"
-author: "Pengyi Yang"
+title: "Optimisation"
+author: "Sowdar Anantharaj"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---

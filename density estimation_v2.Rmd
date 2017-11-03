@@ -1,6 +1,6 @@
 ---
-title: "Density estimation (STAT5003 2016)"
-author: "Pengyi Yang"
+title: "Density estimation"
+author: "Sowdar Anantharaj"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 #runtime: shiny

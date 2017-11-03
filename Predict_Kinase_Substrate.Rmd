@@ -1,6 +1,6 @@
 ---
 title: "Project_Predict_Kinase_Substrate"
-author: "Raghu"
+author: "Sowdar Anantharaj"
 date: "October 2, 2017"
 output: html_document
 ---

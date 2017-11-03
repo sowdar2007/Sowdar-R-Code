@@ -1,6 +1,6 @@
 ---
-title: "Clustering (STAT5003 2017)"
-author: "Pengyi Yang"
+title: "Clustering"
+author: "Sowdar Anantharaj"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---

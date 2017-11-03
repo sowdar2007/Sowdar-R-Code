@@ -1,6 +1,6 @@
 ---
-title: "Feature (model) selection (STAT5003 2017)"
-author: "Pengyi Yang"
+title: "Feature (model) selection"
+author: "Sowdar Anantharaj"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---

@@ -1,6 +1,6 @@
 ---
-title: "Trees and ensemble models (STAT5003 2017)"
-author: "Pengyi Yang"
+title: "Trees and ensemble"
+author: "Sowdar Anantharaj"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---

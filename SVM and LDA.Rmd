@@ -1,6 +1,6 @@
 ---
-title: "Support Vector Machines (STAT5003)"
-author: "Pengyi Yang"
+title: "Support Vector Machines"
+author: "Sowdar Anantharaj"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
