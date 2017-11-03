@@ -1,0 +1,50 @@
+---
+title: "STAT5003 Tutorial 1"
+author: "Sowdarmendran Anantharaj"
+date: "August 8, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Tutorial 1 for STAT5003
+
+This R Markdown document has been written to demonstrate the assignment for Tutorial 1
+
+```{r}
+dat=read.delim("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/communities.data",sep=",",header=FALSE)
+names=read.delim("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/communities.data",header=FALSE)
+```
+
+
+## Summary descriptive statistic for the data
+
+```{r}
+rec=dat[,128]
+summary(rec)
+boxplot(rec)
+hist(rec, xlab="crime rate")
+sd(rec)
+```
+
+## selecting variable containig no missing values
+```{r}
+sel=(colSums(dat == "?") == 0)
+datCom=dat[,sel]
+names[sel,]
+```
+
+## selecting variables that are numeric
+```{r}
+datnumeric = apply(datCom[,-2],1,as.numeric)
+correlationvector = c()
+for(i in 1:ncol(datnumeric))
+{
+correlationvector = c(correlationvector, cor(datnumeric[,i],rec))
+}
+names(correlationvector) = colnames(datnumeric)
+newnames = names[selected,]
+newnames[-2][order(abs(correlationvector),decreasing=TRUE)[1:9]]
+```

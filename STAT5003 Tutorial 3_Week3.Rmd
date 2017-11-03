@@ -1,0 +1,47 @@
+---
+title: "STAT5003_Tutorial3_Week3"
+author: "Sowdarmendran Anantharaj"
+date: "August 16, 2017"
+output: html_document
+---
+##Libraries to Load
+```{r}
+library(MASS)
+library(deamer)
+library(polspline)
+```
+
+
+##Kernel density estimation
+```{r}
+setwd("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/Height_w3")
+dat1=as.numeric(read.delim("bimodal.txt",header=T)[,1])
+hist(dat1, probability = TRUE, breaks = 20, main="# Bin of 20")
+h=c(1,2,3,4)
+d1=density(dat1, bw=h[1], kernel = "gaussian")
+d2=density(dat1, bw=h[2], kernel = "epanechnikov")
+d3=density(dat1, bw=h[3], kernel = "biweight")
+d4=density(dat1, bw=h[4], kernel = "triangular")
+par(mfrow=c(2,2))
+hist(dat1, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Epanechnikov")
+lines(d1, lwd=2, col="red")
+hist(dat1, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Triangular")
+lines(d2, lwd=2, col="green")
+hist(dat1, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Normal")
+lines(d3, lwd=2, col="blue")
+hist(dat1, breaks=20, freq=FALSE, col="lightgray", xlab="", ylab="", main="Biweight")
+lines(d4, lwd=2, col="black")
+```
+
+
+##Performance measurement using cross-validation
+```{r}
+h.bcv <- bw.bcv(dat1)
+d.bcv <- density(dat1, bw=h.bcv, kernel="gaussian")
+h.bcv
+hist(dat1, breaks=20, freq=FALSE, col="gray",main="Histogram with Bandwidth")
+lines(d.bcv, col="green4", lwd=2)
+```
+
+
+

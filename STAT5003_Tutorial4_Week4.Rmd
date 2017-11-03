@@ -1,0 +1,92 @@
+---
+title: "STAT5003_Tutorial4_Week4"
+author: "Sowdarmendran Anantharaj"
+date: "August 29, 2017"
+output: html_document
+---
+##Scatter Plot of the data with the given Cos function
+```{r}
+setwd("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/Smoothing")
+easy <- read.table("datasmooth.txt", header=T)
+X <- easy$x
+Y <- easy$y
+head(X)
+min(X)
+max(X)
+s <- function(X){(X^3) * cos((X+1.4)/2)}
+x.plot <- seq(min(X),max(X),length.out=1000)
+y.plot <- s(x.plot)
+plot(X, Y, xlab="Predictor", ylab="Response", main="Scatter Plot of COS function")
+lines(x.plot, y.plot, lty=2, lwd=2, col="red")
+```
+
+```{r}
+library(KernSmooth)
+setwd("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/Smoothing")
+easy <- read.table("datasmooth.txt", header=T)
+X <- easy$x
+Y <- easy$y
+head(X)
+min(X)
+max(X)
+s <- function(X){(X^3) * cos((X+1.4)/2)}
+s
+x.plot <- seq(min(X),max(X),length.out=1000)
+y.plot <- s(x.plot)
+plot(X, Y, xlab="Predictor", ylab="Response", main="Kernel Smoothing")
+lines(x.plot, y.plot, lty=2, lwd=2, col="red")
+
+fit <- locpoly(X, Y, kernel="normal", bandwidth = 0.9)
+lines(fit, col="blue3", lwd=2)
+fit <- locpoly(X, Y, kernel="normal", bandwidth = 0.5)
+lines(fit, col="green4", lwd=2)
+fit <- locpoly(X, Y, kernel="normal", bandwidth = 0.1)
+lines(fit, col="purple4", lwd=2)
+
+legend("bottomright",c("True relation","bandwidth=0.9", "bandwidth=0.5", "bandwidth=0.1"),
+      lty=c(2,1,1,1), col=c("red", "blue3", "green4", "purple4"))
+```
+
+```{r}
+cubicSpline1.fit <- smooth.spline(X, Y, cv=FALSE, spar=0.5)
+cubicSpline2.fit <- smooth.spline(X, Y, cv=FALSE, spar=1)
+cubicSpline3.fit <- smooth.spline(X, Y, cv=TRUE)
+
+s = function(X){(X^3) * cos((X+1.4)/2)}
+x.plot = seq(min(X),max(X),length.out=1000)
+y.plot = s(x.plot)
+plot(X,Y,xlab="Predictor",ylab="Response", main="Cubic spline smoothing")
+lines(x.plot, y.plot, lty=2, lwd=2, col="red")
+lines(cubicSpline1.fit, col="blue3", lwd=2)
+lines(cubicSpline2.fit, col="purple", lwd=2)
+lines(cubicSpline3.fit, col="green4", lwd=2)
+legend("bottomright",c("True relation","spar=0.5", "spar=est", "spar=1"),
+      lty=c(2,1,1,1), col=c("red", "blue3", "purple" ,"green4"))
+```
+
+```{r}
+setwd("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/Smoothing")
+easy <- read.table("newDatasmooth.txt", header=T)
+X <- easy$x
+Y <- easy$y
+head(X)
+min(X)
+max(X)
+s <- function(X){(X^3) * cos((X+1.4)/2)}
+x.plot <- seq(min(X),max(X),length.out=1000)
+y.plot <- s(x.plot)
+plot(X, Y, xlab="Predictor", ylab="Response", main="newDatasmooth")
+lines(x.plot, y.plot, lty=2, lwd=2, col="red")
+cubicSpline1.fit <- smooth.spline(X, Y, cv=FALSE, spar=0.5)
+cubicSpline2.fit <- smooth.spline(X, Y, cv=FALSE, spar=1)
+cubicSpline3.fit <- smooth.spline(X, Y, cv=TRUE)
+lines(cubicSpline1.fit, col="blue3", lwd=2)
+lines(cubicSpline2.fit, col="purple", lwd=2)
+lines(cubicSpline3.fit, col="green4", lwd=2)
+legend("bottomright",c("True relation","spar=0.5", "spar=est", "spar=1"),
+      lty=c(2,1,1,1), col=c("red", "blue3", "purple" ,"green4"))
+```
+
+##Normal kernel smoother or cubic spline fits better to datasmooth.txt? 
+Kernel Smoother has a better fit for the datasmooth.txt data than cublic spline.
+

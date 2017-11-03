@@ -1,0 +1,139 @@
+---
+title: "Abhijeet Date Cluster work"
+author: "Abhijeet Date"
+date: "28 October 2017"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+<style>
+pre code, pre, code {
+  white-space: pre !important;
+  overflow-x: scroll !important;
+  word-break: keep-all !important;
+  word-wrap: initial !important;
+}
+</style>
+
+
+
+
+```{r loadlib}
+source("/Users/debasreedatta/Documents/Dumbo/Masters in Data Science/Computational Statistical Methods/Assignment 2/cluster work/functions_w6.R")
+
+#source("/Users/debasreedatta/Documents/Dumbo/Masters in Data Science/Computational Statistical Methods/Assignment 2/cluster work/functions_w6.R")
+library(e1071)
+library(MASS)
+library(mlbench)
+library(class)
+library(caret)
+library(ROSE)
+
+
+setwd("/Users/debasreedatta/Documents/Dumbo/Masters in Data Science/Computational Statistical Methods/Assignment 2/cluster work")
+#setwd("C:/Users/106961/Desktop/R/Data")
+
+```
+
+```{r Hierarchicalcluster2 Vars}
+#####Try Hierarchical cluster with only 2 columns . row based clustering ######
+
+raw_data = read.csv("InsulinPhospho.txt",header = TRUE, sep = "\t")
+head(raw_data,5)
+
+hclust_data <- raw_data[,c("Identifier","Avg.Fold","AUC")]
+head(hclust_data,5)
+
+rownames(hclust_data) <- hclust_data$Identifier
+hclust_data <- hclust_data[,c("Avg.Fold","AUC")]
+
+hc.out <- hclust(dist(hclust_data, method="euclidean"), method="ave") 
+plot(hc.out)
+
+hc.clusters = cutree(hc.out, 5)
+
+
+
+```
+
+
+```{r Hierarchical_All_Cols}
+
+#####Try Hierarchical cluster with all the columns . row based clustering ######
+
+
+raw_data = read.csv("InsulinPhospho.txt",header = TRUE, sep = "\t")
+head(raw_data,5)
+
+hclust_data <- raw_data
+rownames(hclust_data) <- hclust_data$Identifier
+hclust_data <- hclust_data[,-1:-2]
+
+hc.out <- hclust(dist(hclust_data, method="euclidean"), method="ave") 
+plot(hc.out)
+hc.clusters = cutree(hc.out, 5)
+table(hc.clusters)
+
+
+
+
+#——Various methods ———
+hc1 <- hclust(dist(hclust_data, method="euclidean"), method="ave") 
+plot(hc1)
+
+hc2 <- hclust(dist(hclust_data, method="manhattan"), method="single") 
+plot(hc2)
+hc3 <- hclust(dist(hclust_data), method="complete")
+plot(hc3)
+
+```
+##  Hierarchical clustering with transpose of data with all the columns
+
+```{r hclust_transpose_all_col}
+
+raw_data = read.csv("InsulinPhospho.txt",header = TRUE, sep = "\t")
+head(raw_data,5)
+
+hclust_data <- raw_data
+hclust_data <- hclust_data[,-2]
+
+n <- hclust_data$Identifier
+t_hclust_data <- as.data.frame(t(hclust_data[,-1]))
+colnames(t_hclust_data) <- n
+
+hc1.out <- hclust(dist(t_hclust_data, method="euclidean"), method="ave") 
+plot(hc1.out,main = "Hierarchical Clusters with All Features")
+
+hc2.out <- hclust(dist(t_hclust_data, method="manhattan"), method="single") 
+plot(hc2.out,main = "Hierarchical Clusters with All Features")
+
+hc3.out <- hclust(dist(t_hclust_data), method="complete") 
+plot(hc3.out,main = "Hierarchical Clusters with All Features")
+
+
+```
+### K means clustering with record count = ALL  and No Of Features = 2
+```{r kmeans}
+
+
+raw_data = read.csv("InsulinPhospho.txt",header = TRUE, sep = "\t")
+head(raw_data,5)
+
+kmeans_data <- raw_data[,c("Identifier","Avg.Fold","AUC")]
+head(kmeans_data,5)
+rownames(kmeans_data) <- kmeans_data$Identifier
+kmeans_data <- kmeans_data[,c("Avg.Fold","AUC")]
+
+km.out2 <- kmeans(kmeans_data, centers=2)
+plot(kmeans_data, col=(km.out2$cluster+1), main="k-means clustering with k=2", xlab="Avg Fold", ylab="AUC", pch=20, cex=2)
+
+km.out3 <- kmeans(kmeans_data, centers=3)
+plot(kmeans_data, col=(km.out3$cluster+1), main="k-means clustering with k=3", xlab="Avg Fold", ylab="AUC", pch=20, cex=2)
+
+km.out4 <- kmeans(kmeans_data, centers=4)
+plot(kmeans_data, col=(km.out4$cluster+1), main="k-means clustering with k=4", xlab="Avg Fold", ylab="AUC", pch=20, cex=2)
+
+```

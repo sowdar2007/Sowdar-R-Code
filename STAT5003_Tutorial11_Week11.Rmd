@@ -1,0 +1,51 @@
+---
+title: "STAT5003_Tutorial11_Week11"
+author: "Sowdarmendran Anantharaj"
+date: "October 23, 2017"
+output: html_document
+---
+
+```{r setup}
+library(tree)
+library(mlbench)
+data("Ionosphere")
+dim(Ionosphere)
+subsetI <- which(Ionosphere[,"Class"] == "good" | Ionosphere[,"Class"] == "bad")
+treeI.model <- tree(Class~., data=Ionosphere[subsetI,])
+summary(treeI.model)
+plot(treeI.model)
+text(treeI.model)
+treeI.model
+
+library(randomForest)
+set.seed(1)
+bag.Ionosphere <- randomForest(Class~., data=Ionosphere, importance=TRUE, mtry=4)
+print(bag.Ionosphere)
+bag.Ionosphere$importance
+
+library(caret)
+set.seed(123)
+subsetI2 <- which(Ionosphere[,"Class"] == "good" | Ionosphere[,"Class"] == "bad")
+Ionosphere.2class <- Ionosphere[subsetI2,]
+inTrain <- createDataPartition(Ionosphere.2class[,"Class"], p = 0.5)[[1]]
+Ionosphere.train <- Ionosphere.2class[inTrain,]
+Ionosphere.test <- Ionosphere.2class[-inTrain,]
+
+tree.model <- tree(Class~., data=Ionosphere.train)
+tree.preds <- predict(tree.model, newdata = Ionosphere.test[,-35])
+tree.classified <- ifelse(tree.preds[,"good"] > 0.5, "good", "bad")
+tree.accuracy <- sum(tree.classified == Ionosphere.test[,35]) / nrow(Ionosphere.test)
+tree.accuracy
+
+bagging.prediction <- c()
+for(i in 1:50) {
+  idx <- sample(x=1:nrow(Ionosphere.2class), size=nrow(Ionosphere.train), replace = TRUE)
+  tree.model <- tree(Class~., data=Ionosphere.train[idx,])
+  bagging.prediction <- cbind(bagging.prediction, predict(tree.model, newdata = Ionosphere.train[,-35])[,"good"])
+}
+
+bagging.classified <- ifelse(rowMeans(bagging.prediction) > 0.5, "good", "bad")
+bagging.accuracy <- sum(bagging.classified == Ionosphere.test[,35]) / nrow(Ionosphere.test)
+bagging.accuracy
+```
+

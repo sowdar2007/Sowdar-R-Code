@@ -1,0 +1,44 @@
+---
+title: "STAT5003_Tutorial10_Week10"
+author: "Sowdarmendran Anantharaj"
+date: "October 17, 2017"
+output: html_document
+---
+
+```{r}
+library(e1071)
+library(reshape2)
+library(ggplot2)
+library(class)
+set.seed(1)
+s <- function(x){exp(-x^2/2)}
+
+# plot data and create the true relationship line
+x.plot <- seq(0, 3, length.out=1000)
+y.plot <- s(x.plot)
+plot(x.plot, y.plot, xlab="x-values", ylab="y-values", main="f(x)", type="l", ylim=c(0, 4))
+abline(h=0, col="red")
+
+mc.x <- runif(10000, min=0, max=3)
+max.y <- max(s(mc.x))
+max.y
+
+mc.y <- runif(10000, min=0, max=max.y)
+plot(mc.x[1:1000], mc.y[1:1000], col="blue", xlab="x-values", ylab="y-values", main="f(x)")
+
+lines(x.plot, y.plot, type="l")
+abline(h=0, col="red")
+
+area.ratio <- sum(mc.y < s(mc.x)) / 10000
+auc <- area.ratio * 3 * max.y
+auc
+
+estimates <- c()
+for(i in seq(10, length(mc.x), by=100)){
+  area.ratio <- sum(mc.y[1:i] < s(mc.x[1:i])) / length(mc.y[1:i])
+  auc <- area.ratio * 3 * max.y
+  estimates <- c(estimates, auc)
+}
+
+plot(estimates, type="l", xlab="Sample size (x 100)", ylab="Integral estimates")
+```

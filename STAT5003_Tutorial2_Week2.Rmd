@@ -1,0 +1,69 @@
+## Installed package ClueR
+#Phosphorylation is an essential protein post-translational modification characterized by the precise and #reversible addition of a phosphate group, by proteins called 'kinases', to their targets, called #'substrates' (Hunter, 1995). 
+
+```{r}
+library(ClueR)
+```
+
+## Installed the package hES and Dimension displayed below
+
+```{r}
+data(hES)
+dim(hES)
+head(hES)
+```
+## Transposed the hES data for creating the hierarchical clustering with respect to times
+```{r}
+trans.hES=t(hES)
+dim(trans.hES)
+```
+
+## R code for hierarchical clustering of hES data and plot the clustering Dendrogram
+```{r}
+dist.hES=dist(trans.hES,method = "euclidean")
+hc.hES=hclust(dist.hES,method="ave")
+plot(hc.hES)
+```
+
+##Load the library e1071 and standardize the data to be unit free
+```{r}
+library(e1071)
+standardize=function(mat)
+{
+means=apply(mat,1,mean)
+stds=apply(mat,1,sd)
+tmp=sweep(mat,1,means,FUN="-")
+mat.stand=sweep(tmp,1,stds,FUN="/")
+return(mat.stand)
+}
+hES.scaled=standardize(hES)
+head(hES.scaled)
+```
+
+##performing clustering using the scaled data
+```{r}
+fc=cmeans(hES.scaled,centers = 9)
+fuzzPlot(hES.scaled, fc, mfrow = c(3, 3))
+```
+
+##Clustering results validation using DunnIndex for Kmeans
+```{r}
+library(clValid)
+dunn.ind <- clValid(hES.scaled[,-3], nClust=4:14, validation="internal", clMethods=c("kmeans"),maxitems=4000)
+summary(dunn.ind)
+optimalScores(dunn.ind)
+par(mfrow=c(2,2))
+plot(dunn.ind)
+```
+
+##Stability based metrics for validation of clusters
+```{r}
+library(clValid)
+APN.ind <- clValid(hES.scaled[,-3], nClust=4:14, validation="stability", clMethods=c("kmeans"),maxitems = 4000)
+summary(APN.ind)
+optimalScores(APN.ind)
+par(mfrow=c(2,2))
+plot(APN.ind)
+```
+##Is k=9 the best choice of k?
+As per the Dunn Index score, the optimum choice of k is 4. and as per the stability based validation index the optimum choice of k is also 4. This by both measures the best K for clustering using kmeans is 4.

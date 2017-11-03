@@ -1,0 +1,50 @@
+---
+title: "STAT5003_Tutorial 9_Week 9"
+author: "Sowdarmendran Anantharaj"
+date: "September 26, 2017"
+output: html_document
+---
+
+```{r setup}
+library(mlbench)
+input_I = data("Ionosphere")
+dim(input_I)
+head(input_I)
+```
+
+### partition the data into training and testing sets
+```{r setup}
+library(caret)
+set.seed(123)
+inTrain <- createDataPartition(input_I$Class, p = .5)[[1]]
+IonoTrain <- input_I[ inTrain,]
+IonoTest  <- input_I[-inTrain,]
+```
+
+#### Simple approach: fold change
+```{r}
+IonoTrain.byClass <- split(IonoTrain[,-61], IonoTrain$Class)
+feature.mean.byClass <- sapply(IonoTrain.byClass, colMeans)
+
+# calculate fold change of features by class and take the absolute of its log value
+feature.foldChange <- abs(log2(feature.mean.byClass[,1] / feature.mean.byClass[,2]))
+
+# sort the features by fold change
+feature.sorted <- sort(feature.foldChange, decreasing=TRUE)
+
+# select the top 10 features
+filtered.features1 <- names(feature.sorted)[1:10]
+filtered.features1
+
+# fitting the classifier on full expression dataset
+knn.full <- knn(train=IonoTrain[,-61], test=IonoTest[,-61], cl=IonoTrain$Class, k=5, prob=TRUE)
+table(knn.full, IonoTest$Class)
+
+# fitting the classifier on top 10 filtered features
+knn.filtered <- knn(train=IonoTrain[,filtered.features1], test=IonoTest[,filtered.features1], cl=IonoTrain$Class, k=5, prob=TRUE)
+table(knn.filtered, IonoTest$Class)
+```
+
+
+
+

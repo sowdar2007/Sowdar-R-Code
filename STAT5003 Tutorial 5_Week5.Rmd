@@ -1,0 +1,38 @@
+---
+title: "STAT5003_Tutorial5_Week5"
+author: "Sowdarmendran Anantharaj"
+date: "September 5, 2017"
+output: html_document
+---
+## Create sumulation dataset
+```{r}
+set.seed(3)
+f1 <- rnorm(100, mean=6, sd = 1.2)
+set.seed(4)
+f2 <- rnorm(100, mean=6, sd = 1.2)
+P.data <- cbind(f1, f2)
+
+set.seed(7)
+f1 <- rnorm(400, mean=4, sd = 1.2)
+set.seed(8)
+f2 <- rnorm(400, mean=4, sd = 1.2)
+N.data <- cbind(f1, f2)
+
+data.mat <- data.frame(rbind(P.data, N.data), Class=rep(c(1, 0), time=c(nrow(P.data), nrow(N.data))))
+
+rownames(data.mat) <- paste("s", 1:(nrow(P.data)+nrow(N.data)), sep="")
+
+head(P.data)
+head(N.data)
+head(data.mat)
+data20 = subset(data.mat, Class==1)
+data80 = subset(data.mat, Class==0)
+dim(data80)
+dim(data20)
+head(data80)
+head(data20)
+logit.model <- glm(Class~., family=binomial(link='logit'), data=data80)
+logit.decision <- ifelse(logit.model$fitted.values > 0.5, 1, 0)
+sum(logit.decision == data.mat$Class) / nrow(data.mat) * 100
+```
+

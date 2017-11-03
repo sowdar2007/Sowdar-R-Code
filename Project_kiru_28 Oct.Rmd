@@ -1,0 +1,580 @@
+---
+title: "Predicting novel kinase-substrates using time-course phosphoproteomics data"
+author: "Group 17"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+#1 INTRODUCTION
+Phosphorylation is an essential protein post-translational modification characterized by the precise and reversible addition of a phosphate group, by proteins called 'kinases', to their targets, called 'substrates' (Hunter, 1995). A comprehensive dataset of all insulin phosphorylation sites and their time-course reactions to phosphorylation was provided. The objective of this project is to classify AKT and mTOR substrates from the given data of all insulin phosphorylation sites. 
+
+With the advent of new technology and techniques in data science, the classification of the substrates, which was an ardent manual task before can now be fully automated. This project would endevour to identify novel substrates within the 12,000 insulin phosphorylation sites provided.
+
+The report below will explain in-detail the approach and stages of the project, the analysis performed in each stage and final predictions with proper substantiation of the results.
+
+#2 Project Setup
+The inital *Project Setup Phase* included tasks for data preparation and definition of  central code versioning software to be used by all members of the group.
+
+###2.1 Data Preparation
+Data provided for the this project consists of the following data sets
+
+* **Insuline Phosphorylation site**
+* **AKT Substrates - A small subset of labelled AKT Substrates from the insulin  phosphorylation site data**
+* **mTOR Substrates - A small subset of labelled mTOR Substrates from the insulin phosphorylation site data** 
+* **Preduction 2016 - Probability of AKT or mTOR substrates**
+
+As first step of the data preparation phase,the insulin phosphorylation data was loaded in to a matrix and filtered out records that did not respond to phosphorylation. Next step was to use the AKT substrates and mTOR substrates subsets to index each Insulin Phoshorylation sites to indicate AKT as 1, mTOR as -1 and unlabelled ones as 0. 
+The output of data preparation was a dataset with records containing only phosphorylation sites that responded to AKT or mTOR substrates and each of the AKT, mTOR and unlabelled data were indexed.
+The prediction for 2016 data that was provided was separately loaded to a data frame for validation of the final results.
+
+This data preparation phase setup the data for sampling and modelling phases during the later stages of the project.
+
+###2.2 Code Versioning
+Github was used as the code repository and version management tool for the project. A central code repository was created and one member of the team was designated as the administrator for management of the code versions. Using Github as the version control tool greatly reduced the effort required for managing versions from different team members and helped focus effort in solving the problem.
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+source("C:/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/functions_w6.R")
+#source("C:/Users/106961/Desktop/R/Data/functions_w6.R")
+library(e1071)
+library(MASS)
+library(mlbench)
+library(class)
+library(caret)
+library(ROSE)
+library(sqldf)
+#library(xlsx)
+
+```
+
+
+```{r set working directory and read data,,results='asis',echo=FALSE}
+
+setwd("C:/Users/Sahana/Documents/STAT5003 Computational Statistical Methods")
+#setwd("C:/Users/106961/Desktop/R/Data")
+
+raw_data = read.csv("InsulinPhospho.txt",header = TRUE, sep = "\t")
+data <- akt_data <- mTOR_data <- raw_data
+
+akt_substrate = read.csv("Akt_substrates.txt",header = FALSE, sep = "\t")
+mTOR_substrate = read.csv("mTOR_substrates.txt",header = FALSE, sep = "\t")
+
+data$Class = ifelse(is.element(data$Identifier,akt_substrate[,1]),1,ifelse(is.element(data$Identifier,mTOR_substrate[,1]),-1,0))
+
+akt_data$Class = ifelse(is.element(akt_data$Identifier,akt_substrate[,1]),1,-1)
+mTOR_data$Class = ifelse(is.element(mTOR_data$Identifier,mTOR_substrate[,1]),1,-1)
+
+akt_data_orig <- akt_data
+mTOR_data_orig <- mTOR_data
+
+pred_2016_akt = read.csv("Prediction_2016_akt.csv",header = TRUE, sep = ",")
+pred_2016_mTOR = read.csv("Prediction_2016_mTOR.csv",header = TRUE, sep = ",")
+
+```
+
+
+#3 Project Methodology and Approach
+A systematic analysis of data was paramount to achieve the objective of the project, hence a framework of analysis, feature selection , sampling, model selection, and model validation was adopted. The scope of work was broken down to the following stages.
+
+* **Exploratory Analysis:** Comprised of understanding the feature space to get a feel of the data using all of the features provided. Clustering techniques were extensively used for exploratory analysis along with simple plotting of data to understand any patterns.
+
+* **Feature Selection:** Focused on identying the features that highly contributed to the classification. This was performed using a sophisticated t-test.
+
+* **Characteristics of Dataset:** Class imbalance was a major challenges faced with the dataset that was provided. Random Over-sampling (ROSE) and Repeated sampling (Bagging) techniques were used to overcome these challenges.  
+
+* **Model Selection:** Performed classification using various models and calculated the accuracy, sensitivity and specificity of the models to identify the optimal model that had the best performance metrics.
+
+* **Model Evaluation:** Cross validation using k-folds was used as the primary method and benchmarked model outputs to identify the best model for prediction.
+
+* **Model Output Comparison** The probabilities of the preidcted output was compared against the 2016 prediction and standard deviation was plotted to highlight the differences.
+
+Each of the stages mentioned above will be explained in detail in the following sections.
+
+#4 Exploratory Analysis
+
+Average fold and Area under the curve (AUC) were the aggregated measures that were provided along with the data. These data elements were used extensively to plot and understand the emergence of pattern within the data provided.
+Exploratory analysis was used as a means of getting a feel of the data and how the various features impacted the phosphorylation sites during the time-course. 
+
+```{r Plot data for visualization}
+
+#subset(data, Class == 1)$AUC
+#AUC vs Avg.Fold
+plot(x=subset(data, Class == 0)$AUC,y=subset(data, Class == 0)$Avg.Fold,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5),xlab="AUC",ylab="Avg.Fold")
+points(x=subset(data, Class == 1)$AUC,y=subset(data, Class == 1)$Avg.Fold,col="red",pch=13)
+points(x=subset(data, Class == -1)$AUC,y=subset(data, Class == -1)$Avg.Fold,col="blue",pch=13)
+```
+
+It is evident from the plots above that there is a pattern in the reaction times of substrates on the phosphorylation sites.
+
+###4.1 Clustering
+Clustering was also performed on the data to study if there are distinct clusters that form from the data. Both hierarchical and k-means clustering methods were performed for this study with the methodology and results discussed below.
+
+####4.1.1 Hierarchical Clustering
+A transpose of the phosphorylation data was taken and a dendogram was plotted with all the features of the data set provided. This analysis was aimed at understanding any patterns in the time course reaction of the substrates.
+
+**Euclidean Method** shows a clear formation of 2 clusters with different time course reactions of the data. It is evident from the plot that there are substrates that react early during the 15s, 30s, 1m and 2m timeframes and another set of sites that react at a later time.
+
+
+```{r  hclust_euclidean}
+hclust_data <- raw_data
+hclust_data <- hclust_data[,-2]
+
+n <- hclust_data$Identifier
+t_hclust_data <- as.data.frame(t(hclust_data[,-1]))
+colnames(t_hclust_data) <- n
+
+hc1.out <- hclust(dist(t_hclust_data, method="euclidean"), method="ave") 
+plot(hc1.out,main = "Hierarchical Clusters with All Features")
+
+```
+
+**Complete Method** shows a similar result as euclidean method, that there is a clear indication of sites that have an early reaction to the subsrates and those that have late reaction.
+
+```{r hclust_complete, echo=TRUE}
+hc3.out <- hclust(dist(t_hclust_data), method="complete") 
+plot(hc3.out,main = "Hierarchical Clusters with All Features")
+```
+
+####4.1.2 K-Mean clustering
+Further analysis was done using K-Mean clustering to see if a distinct pattern of groups emerges. Since we we have the prior knowledge of classifying 2 groups, we used the K value of 2 and 3. The results are displayed below. Similar to hierarchical clustering, we could observe that there is a clear indication of sites that have an early reaction to the subsrates and those that have late reaction.
+
+```{r k-means_clustering, echo=TRUE}
+par(mfrow = c(1, 2),pty = "s")
+kmeans_data <- raw_data[,c("Identifier","Avg.Fold","AUC")]
+rownames(kmeans_data) <- kmeans_data$Identifier
+kmeans_data <- kmeans_data[,c("Avg.Fold","AUC")]
+
+km.out2 <- kmeans(kmeans_data, centers=2)
+plot(kmeans_data, col=(km.out2$cluster+1), main="k-means clustering with k=2", xlab="Avg Fold", ylab="AUC", pch=20, cex=2)
+
+km.out3 <- kmeans(kmeans_data, centers=3)
+plot(kmeans_data, col=(km.out3$cluster+1), main="k-means clustering with k=3", xlab="Avg Fold", ylab="AUC", pch=20, cex=2)
+```
+
+
+#5 Building Prediction Models as calling-functions
+To enable further analysis of the features and to be able to select the best model, we believed in developing various models as calling-functions and parameterized those functions for reuse. This helped immensely by allowing us to call these models as functions when required to perform validations and tests. We developed functions for the following models
+
+* **Support Vector Machine (SVM) - ** Created for running random over-sampling predictions.
+* **Support Vector Machine (SVM) with bagging**
+* **Linear Discriminant Analysis (LDA)**
+* **K nearest neighbor (KNN)**
+
+The source code for the functions are shown below. Please note that these models will be called in to action during various stages - while selecting features, while sampling and while comparing model outputs to select the best model for prediction - in the future sections.
+
+```{r SVM iterate}
+
+svm_model <- function(dat, cl)
+{
+  for(deg in c(1:3))
+  {
+    svm.TP <- svm.TN <- svm.FP <- svm.FN <- c()
+    for(k in 1:length(fold))
+    {
+      svm_data <- dat[fold[[k]],]
+      svm.model <<- svm(svm_data, y=cl[fold[[k]]], kernel="polynomial", degree=deg, type="C-classification",cost=1,probability = TRUE)
+      prediction <- predict(svm.model, svm_data) 
+      
+      truth <- cl[fold[[k]]]
+      
+      svm.TP <- c(svm.TP, sum((truth == prediction)[truth == "1"]))
+      svm.TN <- c(svm.TN, sum((truth == prediction)[truth == "-1"]))
+      svm.FP <- c(svm.FP, sum((truth != prediction)[truth == "-1"]))
+      svm.FN <- c(svm.FN, sum((truth != prediction)[truth == "1"]))
+    }
+    res <- cbind(evaluate(svm.TN, svm.FP, svm.TP, svm.FN),Method = paste("SVM - Degree:",deg),Model_Identifier = mod_cnt, No.Features = ncol(dat), Features = toString(colnames(dat),sep=', '))
+    metrics <<- rbind(metrics,res)
+    model_fn[[mod_cnt]] <<- svm.model
+    mod_cnt <<- mod_cnt + 1
+  }
+}  
+
+```
+
+```{r SVM Bagging iterate}
+
+svm_model_bag <- function(dat)
+{
+  positive_class = subset(dat,Class == 1)[,2:ncol(dat)]
+  negative_class = subset(dat,Class == -1)[,2:ncol(dat)]
+
+  for(deg in c(3:3))
+  {
+   
+    for(k in 1:50)
+    {
+      ind <- sample(x=nrow(negative_class),size = nrow(positive_class),replace = FALSE)
+      svm_data <- rbind(positive_class,negative_class[ind,])
+    
+      svm.model <<- svm(svm_data[,1:(ncol(svm_data)-1)], y=svm_data[,ncol(svm_data)], kernel="polynomial", degree=deg, type="C-classification",cost=1,probability = TRUE)
+      prediction <- predict(svm.model, dat[,2:(ncol(dat)-1)], probability=TRUE) 
+      svm_pred_Prob <- cbind(dat[1],prob=attr(prediction, "probabilities")[,1])
+      prob_pred <<- rbind(prob_pred, svm_pred_Prob)
+    }
+  }
+}  
+
+```
+
+```{r LDA iterate}
+
+lda_model <- function(dat,cl)
+{
+  lda.TP <- lda.TN <- lda.FP <- lda.FN <- c()
+  dat = cbind(dat,Class=cl)
+  for(k in 1:length(fold))
+  {
+    lda.model <- lda(Class~., data=dat[-fold[[k]],])
+    pred.probs <- predict(lda.model, newdata=dat[fold[[k]],])$posterior[,"1"]
+    preds <- ifelse(pred.probs > 0.5, "1", "-1")
+    
+    truth <- dat[fold[[k]],]$Class
+  
+    lda.TP <- c(lda.TP, sum((truth == preds)[truth == "1"]))
+    lda.TN <- c(lda.TN, sum((truth == preds)[truth == "-1"]))
+    lda.FP <- c(lda.FP, sum((truth != preds)[truth == "-1"]))
+    lda.FN <- c(lda.FN, sum((truth != preds)[truth == "1"]))
+  }
+  res <- cbind(evaluate(lda.TN, lda.FP, lda.TP, lda.FN),Method = paste("LDA"),Model_Identifier = mod_cnt, No.Features = ncol(dat), Features = toString(colnames(dat),sep=', '))
+  metrics <<- rbind(metrics,res)
+  model_fn[[mod_cnt]] <<- lda.model
+  mod_cnt <<- mod_cnt + 1
+}
+
+```
+
+```{r KNN iterate}
+
+knn_model <- function(dat,cl)
+{
+  knn.TP <- knn.TN <- knn.FP <- knn.FN <- c()
+  dat = cbind(dat,Class=cl)
+  
+  for(n in c(1,10,20,50))
+  {
+    for(k in 1:length(fold))
+    {
+      truth <- dat[fold[[k]],]$Class
+      preds <- knn(dat[-fold[[k]],], dat[fold[[k]],], dat$Class[-fold[[k]]], k=n)
+      knn.TP <- c(knn.TP, sum((truth == preds)[truth == "1"]))
+      knn.TN <- c(knn.TN, sum((truth == preds)[truth == "-1"]))
+      knn.FP <- c(knn.FP, sum((truth != preds)[truth == "-1"]))
+      knn.FN <- c(knn.FN, sum((truth != preds)[truth == "1"]))
+    }
+    res <- cbind(evaluate(knn.TN, knn.FP, knn.TP, knn.FN),Method = paste("KNN, Nearest neighbour:",n),Model_Identifier = mod_cnt, No.Features = ncol(dat), Features = toString(colnames(dat),sep=', '))
+    metrics <<- rbind(metrics,res)
+    model_fn[[mod_cnt]] <<- preds
+    mod_cnt <<- mod_cnt + 1
+  }
+}
+
+```
+
+#6 Feature Prioritization and Selection
+It is imperative to reduce the feature space with a view of improving accuracy. In that respect, we used the statistical T-test for our feature selection. T-test was more superior than other methods for a feature selection since it takes in to consideration the variablility within the class.
+
+In-order to select the most significant features, we performed t-test and listed out the best features in a rank order. The feature selection function and its output are shown below. But we were careful NOT to select the top features arbitarily, instead we used the SVM, LDA and KNN model functions we developed above and iterated the features through the models incrementally. Then we selected the features that perfomed well in the cross-validation metrics. This way we ensured there was no bias in our feature selection and it was completely automated. 
+
+```{r Feature Prioratization,echo=TRUE }
+
+feature.pvalues <- c()
+for(i in 3:16) 
+{
+  feature.pvalues <- c(feature.pvalues, t.test(subset(akt_data, Class == 1)[[i]], subset(akt_data, Class == -1)[[i]])$p.value)
+}
+names(feature.pvalues) <- colnames(akt_data[,3:16])
+filtered.features_akt <- names(sort(feature.pvalues))
+print("Top 10 features for AKT substrates")
+filtered.features_akt[1:10]
+
+feature.pvalues <- c()
+for(i in 3:16) 
+{
+  feature.pvalues <- c(feature.pvalues, t.test(subset(mTOR_data, Class == 1)[[i]], subset(mTOR_data, Class == -1)[[i]])$p.value)
+}
+names(feature.pvalues) <- colnames(mTOR_data[,3:16])
+filtered.features_mTOR <- names(sort(feature.pvalues))
+print("Top 10 features for mTOR substrates")
+filtered.features_mTOR[1:10]
+
+```
+
+#7 Managing Class-Imbalance
+Class imbalance was a key issue with the phosphometrics data that was provided, since the number of labelled datasets were very less. the degree of imbalance is very high with the number of positive labelled data being only 22 for AKT and 26 for mTOR out of the full dataset of 12,000. Solving class-imbalance in the data required the usage of sampling techniques to generate samples from the imbalanced data. 
+An attempt was made using various sampling methods to identify samples that were positively labelled and use them for the classification. We used Random up-sampling and Repeated sampling (Bagging) and the results of the same are documented below. Each of the samples generated were futher used in the model functions of SVM , LDA and KNN for prediction.
+
+###7.1 Random Over-sampling using ROSE
+ROSE (Random Over-Sampling Examples) package provides functions to deal with binary classification problems in the presennce of imbalanced classes (Menardi and Torelli, 2013).  Synthetic balanced samples are generated according to ROSE (Menardi and Torelli, 2013).The package pivots on function ROSE which generates synthetic balanced samples and thus allows to strenghten the subsequent estimation of any binary classifier. ROSE (Random Over-Sampling Examples) is a bootstrap-based technique which aids the task of binary classification in the presence of rare classes. It handles both continuous and categorical data by generating synthetic examples from a conditional density estimate of the two classes (Menardi and Torelli, 2013).
+ROSE package was used to generate AKT and mTOR samples from the population dataset provided. The output of the ROSE based sampling is provided below. 
+
+```{r ROSE UPsampling,echo=TRUE}
+
+akt_data.rose <- ROSE(Class~., data=akt_data, seed=3)$data
+mTOR_data.rose <- ROSE(Class~., data=mTOR_data, seed=3)$data
+#table(akt_data.rose$Class)
+
+akt_data = akt_data.rose
+mTOR_data = mTOR_data.rose
+
+plot(x=subset(akt_data, Class == -1)$AUC,y=subset(akt_data, Class == -1)$Avg.Fold,col="yellow",pch=13,xlim=c(0,1),ylim=c(-1,5))
+points(x=subset(akt_data, Class == 1)$AUC,y=subset(akt_data, Class == 1)$Avg.Fold,col="red",pch=13)
+
+```
+
+
+###7.2 Repeated Sampling using Bagging
+Bagging was a particularly simple and appropriate technique for our prediction problem space. Since the number of posivitely labelled samples were very less, we used bagging with "50 bags" to boostrap samples from the dataset. Then these 50 bags were furthter iterated with the model functions that were developed for SVM, LDA and KNN. Here again, we used the cross-validation metrics as the benchmark for selecting the samples with the best performance metric.
+
+**A note on DEGREE Selection for repeated sampling:** the degree used for repeated sampling using bagging technique was 3. we arrived at this degree after iterating the models for multiple DEGREE parameters. The below table displays the results of cross-validation measures for bagging using SVM model iterated up to degree 5. As evident from the table, the cross-validation metrics of sensitivity, specificity, f1 and GMean showed the most optimal measures for a degree of 3. Hence we felt comfortable to run repeated sampling using bagging with degree 3.
+ 
+
+```{r bagging_degree_selection,echo=TRUE}
+p_data <- raw_data
+Akt_substrates_deg <- akt_substrate
+mTOR_substrates_deg <- mTOR_substrate
+
+colnames(Akt_substrates_deg) <- 'Identifier'
+Akt_F <- rep(1,nrow(Akt_substrates_deg))
+Akt_substrates_deg <- data.frame(cbind(Akt_substrates_deg,Akt_F))
+
+colnames(mTOR_substrates_deg) <- 'Identifier'
+mTOR_F <- rep(1,nrow(mTOR_substrates_deg))
+mTOR_substrates_deg <- data.frame(cbind(mTOR_substrates_deg,mTOR_F))
+
+data_merge1 <- merge(p_data,Akt_substrates_deg,by='Identifier',all.x = TRUE,suffixes = c("_x","_y"))
+data_merge2 <- merge(data_merge1,mTOR_substrates_deg,by='Identifier',all.x = TRUE,suffixes = c("_x","_y"))
+seq_mid <- substr(data_merge2$Seq.Window,7,7)
+data_merge3 = cbind(data_merge2,seq_mid)
+
+##setting non mTOR and non AKT flags as 0 instead of NA
+
+mTOR_F1 <- as.data.frame(ifelse(is.na(data_merge3$mTOR_F ),0,1))
+colnames(mTOR_F1) <- 'mTOR_F1'
+data_merge3 <- cbind(data_merge3,mTOR_F1)
+
+
+Akt_F1 <- as.data.frame(ifelse(is.na(data_merge3$Akt_F ),0,1))
+colnames(Akt_F1) <- 'Akt_F1'
+data_merge3 <- cbind(data_merge3,Akt_F1)
+
+svm_model_deg <- function(dat, cl, d)
+{
+  for(deg in c(1:d))
+  {
+    svm.TP.deg <- svm.TN.deg <- svm.FP.deg <- svm.FN.deg <- c()
+    
+      ##svm_data <- dat[fold[[k]],]
+      svm.model.deg <<- svm(dat, y=cl, kernel="polynomial", degree=deg, type="C-classification",cost=1,probability = TRUE)
+      prediction <- predict(svm.model.deg, dat) 
+      
+      truth <- cl
+      
+      svm.TP.deg <- c(svm.TP.deg, sum((truth == prediction)[truth == "1"]))
+      svm.TN.deg <- c(svm.TN.deg, sum((truth == prediction)[truth == "0"]))
+      svm.FP.deg <- c(svm.FP.deg, sum((truth != prediction)[truth == "0"]))
+      svm.FN.deg <- c(svm.FN.deg, sum((truth != prediction)[truth == "1"]))
+    
+    res <- cbind(evaluate(svm.TN.deg, svm.FP.deg, svm.TP.deg, svm.FN.deg),Method = paste("SVM - Degree:",deg))
+    metrics <<- rbind(metrics,res)
+  }
+} 
+
+model_run <- function(dat,cl,d)
+{
+  metrics <<- data.frame()
+  svm_model_deg(dat,cl,d)
+}
+
+set.seed(40)
+
+ss=subset(data_merge3,data_merge3$mTOR_F1 != 1)
+
+mTOR_sample <- data_merge3[sample(nrow(ss),size = 26,replace = FALSE),]
+
+data_model <- rbind(mTOR_sample,subset(data_merge3,data_merge3$mTOR_F1 == 1))
+
+dat <- data_model[,3:16]
+cl <- data_model$mTOR_F1
+
+model_run(dat,cl,5)
+
+metrics
+```
+
+
+#8 Model Selection
+The approach for model selection (like other sections) was again firmly grounded on the results of specificity, sensitiviy, F1 Score and GMean. Each of the model functions for SVM, LDA and KNN earlier developed were iterated on both Degree (1, 2 and 3) and features. It is important to note that all of the 13 features were used in the iteration incrementally.
+A model run ID was assigned for each iteration and the cross-validation measures of sensitivity, specificity, F1 score and GMean were captured. Once all of the iterations were completed, the output for each model run were carefully studied to review the cross-validation measures.From the analysis of the output the below conclusions were made.
+
+**For AKT substrates data** model 75 was preferred because of the optimum values of sensitivity, specificity, F1 and GMean measures. The rationale for choosing this model is that the sensitivity measure does NOT improve significantly any further. Also, by comparing the features selected (to the feature prioritization and selection section) it is evident that this model would give the *best fit for the bias-variance tradeoff* and help avoid the overfitting-underfitting conundrum.
+
+**For mTOR substrates data** model 65 was preferred for similar reasons as above.
+
+Since the iteration output is too large to accomodate in this report, a sample output for the first 6 records are displayed below using the head R command.
+
+
+```{r Model Selection,echo=TRUE}
+
+set.seed(1)
+fold <- createFolds(akt_data$Class, k=10)
+
+model <- function(dat,cl)
+{
+  svm_model(dat,cl)
+  lda_model(dat,cl)
+  knn_model(dat,cl)
+}
+
+
+metrics <<- data.frame()
+mod_cnt <<- 1
+model_fn <<- c()
+
+for(i in c(1:length(filtered.features_akt)))
+{
+  idn <- akt_data[1]
+  dat <- data.frame(akt_data[,filtered.features_akt[1:i]])
+  cl <- akt_data$Class
+  model(dat,cl)
+}
+
+akt_metrics <- metrics
+akt_model_fn <- model_fn
+
+metrics <<- data.frame()
+mod_cnt <<- 1
+model_fn <<- c()
+
+for(i in c(1:length(filtered.features_mTOR)))
+{
+  idn <- mTOR_data[1]
+  dat <- data.frame(mTOR_data[,filtered.features_mTOR[1:i]])
+  cl <- mTOR_data$Class
+  model(dat,cl)
+}
+
+mTOR_metrics <- metrics
+mTOR_model_fn <- model_fn
+
+head(akt_metrics[grep("SVM", akt_metrics$Method),][with(akt_metrics[grep("SVM", akt_metrics$Method),], order(-Sensitivity)),])
+head(mTOR_metrics[grep("SVM", mTOR_metrics$Method),][with(mTOR_metrics[grep("SVM", mTOR_metrics$Method),], order(-Sensitivity)),])
+
+```
+
+###8.1 Execution of chosen model using random over-sampling (ROSE) samples.
+Once the optimum models were selected as explained in the previous section, the selected model was executed for predicting the AKT and mTOR substrates. The probabilites for the prediction were captured for comparison with the 2016 prediction date provided.
+
+Please find below the code snippet for the models 75 and 65 used respectively for AKT and mTOR predictions.
+
+```{r chosen_model}
+#Chosen Model
+akt_model_chosen <- akt_model_fn[[75]]
+akt_prediction <- predict(akt_model_chosen, data[3:(subset(akt_metrics, Model_Identifier == 75)$No.Features + 2)],probability = TRUE) 
+svm_rose_prob_akt <- cbind(Identifier = data.frame(data$Identifier),svm_rose_prob = attr(akt_prediction, "probabilities")[,2])
+
+mTOR_model_chosen <- mTOR_model_fn[[65]]
+mTOR_prediction <- predict(mTOR_model_chosen, data[3:(subset(mTOR_metrics, Model_Identifier == 65)$No.Features + 2)],probability = TRUE) 
+svm_rose_prob_mTOR <- cbind(Identifier = data.frame(data$Identifier),svm_rose_prob = attr(mTOR_prediction, "probabilities")[,2])
+
+```
+
+###8.2 Execution model using repeated sampling (bagging) samples.
+The AKT and mTOR predictions were also executed using the SVM bagging model and the prediction output for each iteration was loaded, after which the average probability for each of the 50 bags were calculated for each iteration. 
+The probability values were loaded in to a table to be compared with the 2016 prediction data provided.
+
+Please find below the code snippet for the models for bagging executed for AKT and mTOR predictions.
+
+```{r bagging}
+##bagging
+
+prob_pred <- c()
+svm_pred_Prob <- c()
+svm_model_bag(akt_data_orig[,c(1,3:12,17)])
+svm_bag_prob_akt <- sqldf('SELECT Identifier, AVG(prob) AS SVM_Bagging_prob FROM prob_pred GROUP BY Identifier')
+
+prob_pred <- c()
+svm_pred_Prob <- c()
+svm_model_bag(mTOR_data_orig[,c("Identifier",filtered.features_mTOR[1:10],"Class")])
+svm_bag_prob_mTOR <- sqldf('SELECT Identifier, AVG(prob) AS SVM_Bagging_prob FROM prob_pred GROUP BY Identifier')
+
+```
+
+
+#9 A note on Model Evaluation
+As was demonstrated in each of the above sections, our methodology and framework was built with strong reliance on the cross-validation metrics of sensitivity, specificity, accuracy and F1 score. In each of the critical stages of Feature selection, sampling and model selection we benchmarked our results to the performance metrics and always selected the best performing model that had the best output for these benchmark. We did not perform cross-validation as an after step to each of our stages, but we completely integrated cross-validation in to our code and methodology.
+
+#10 Model Performance Comparison to substantiate accuracy
+Once all of the model outputs were generated, the data was compared against the 2016 prediction data that was provided to substantiate the accuracy. This has been done programmtically (code below) in the following steps:
+
+1. AKT and mTOR data exported in to a CSV file for SVM model that was run using ROSE and bagging.
+2. The difference between the 2016 prediction and each of the ROSE and bagging outputs calculated.
+3. Mean and standard deviation was calculated for the differences.
+4. Plots for distribution of differences are drawn (below) for ROSE and Bagging against 2016 predictions.
+
+The graphs below are depicting the distribution of differences between our model outputs compared against 2016 predictions. We have taken the difference between the outputs for each record, taken the difference and using the differences, we have tried to plot the distribution of the differences. We can see the difference in means and standard deviation in the graphs.
+
+```{r Model_comparison, echo=TRUE}
+old_prediction_akt <- data.frame(Identifier = paste(toupper(pred_2016_akt[,1]),";",pred_2016_akt[,2],";",sep=""),pred_2016_akt[,c("Full.model.predict","Motif.predict","Phosphoproteome.predict")])
+
+old_prediction_mTOR <- data.frame(Identifier = paste(toupper(pred_2016_mTOR[,1]),";",pred_2016_mTOR[,2],";",sep=""),pred_2016_mTOR[,c("Full.model.predict","Motif.predict","Phosphoproteome.predict")])
+
+colnames(svm_rose_prob_akt) <- colnames(svm_rose_prob_mTOR) <- c("Identifier","svm_rose_prob")
+
+output_akt <- Reduce(function(x, y) merge(x, y, by = "Identifier",all.x=TRUE), list(svm_rose_prob_akt,svm_bag_prob_akt,old_prediction_akt))
+output_mTOR <- Reduce(function(x, y) merge(x, y, by = "Identifier",all.x=TRUE), list(svm_rose_prob_mTOR,svm_bag_prob_mTOR,old_prediction_mTOR))
+
+output_akt$Rose_Difference <- output_akt$svm_rose_prob - output_akt$Full.model.predict
+output_akt$Bagging_Difference <- output_akt$SVM_Bagging_prob - output_akt$Full.model.predict
+
+output_mTOR$Rose_Difference <- output_mTOR$svm_rose_prob - output_mTOR$Full.model.predict
+output_mTOR$Bagging_Difference <- output_mTOR$SVM_Bagging_prob - output_mTOR$Full.model.predict
+
+write.csv(output_akt, "C:/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/Output/output_akt.csv")
+write.csv(output_mTOR, "C:/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/Output/output_mTOR.csv")
+
+
+akt_dnorm_rose <- dnorm(output_akt$Rose_Difference, mean(output_akt$Rose_Difference, na.rm=TRUE),sd(output_akt$Rose_Difference, na.rm=TRUE))
+plot(output_akt$Rose_Difference, akt_dnorm_rose,col="red"
+     #,ylim =c(min(akt_dnorm_bagging),max(mTOR_drX15,drX15))
+     ,xlim =c(min(output_akt$Rose_Difference, na.rm=TRUE),max(output_akt$Rose_Difference, na.rm=TRUE)),main="AKT - 2016 Model vs SVM(oversampling)")
+
+akt_dnorm_bagging <- dnorm(output_akt$Bagging_Difference, mean(output_akt$Bagging_Difference, na.rm=TRUE), sd(output_akt$Bagging_Difference, na.rm=TRUE))
+plot(output_akt$Bagging_Difference, akt_dnorm_bagging,col="red"
+     #,ylim =c(min(akt_dnorm_bagging),max(mTOR_drX15,drX15))
+     ,xlim =c(min(output_akt$Bagging_Difference, na.rm=TRUE),max(output_akt$Bagging_Difference, na.rm=TRUE)),main="AKT - 2016 Model vs SVM(Bagging)")
+
+mTOR_dnorm_rose <- dnorm(output_mTOR$Rose_Difference, mean(output_mTOR$Rose_Difference, na.rm=TRUE),sd(output_mTOR$Rose_Difference, na.rm=TRUE))
+plot(output_mTOR$Rose_Difference, mTOR_dnorm_rose,col="red"
+     #,ylim =c(min(mTOR_dnorm_bagging),max(mTOR_drX15,drX15))
+     ,xlim =c(min(output_mTOR$Rose_Difference, na.rm=TRUE),max(output_mTOR$Rose_Difference, na.rm=TRUE)),,main="mTOR - 2016 Model vs SVM(oversampling)")
+
+mTOR_dnorm_bagging <- dnorm(output_mTOR$Bagging_Difference, mean(output_mTOR$Bagging_Difference, na.rm=TRUE), sd(output_mTOR$Bagging_Difference, na.rm=TRUE))
+plot(output_mTOR$Bagging_Difference, mTOR_dnorm_bagging,col="red"
+     #,ylim =c(min(mTOR_dnorm_bagging),max(mTOR_drX15,drX15))
+     ,xlim =c(min(output_mTOR$Bagging_Difference, na.rm=TRUE),max(output_mTOR$Bagging_Difference, na.rm=TRUE)),main="mTOR - 2016 Model vs SVM(Bagging)")
+
+```
+
+**The output files produced (Listed below) as part of this code are provided with this report, with file names as below**
+
+**mTOR Output differences between our model and 2016 prediction**
+
+**AKT Output differences between out model and 2016 prediction**
+
+#11 Conclusion
+This project provided us with the opportunity to use various data science techniques for a real-world scenario. The phosphorometrics data provided enough challenges and opportunities to both explore existing techniques and well as come up with new and innovative implementation of prevailing data science techniques. 
+We started off with building models as parameterized functions and performed feature prioritization and selection using these models. We could succcessfully identify 10 features for both AKT and mTOR datasets that had the optimum specificity, sensitivity, F1 and GMean parameters. But one of the critical challenges in the data was to solve the class imbalance issue, which we tackled with Random Over-Sampling (ROSE) and Repeated sampling using Bagging techniques.
+Using the optimum features and samples generated, we were able to predict the probabilities of AKT and mTOR substrates separately for both ROSE and Bagging. We were very careful in chossing the models, so we could balance the bias-variance tradeoff and avoid the overfitting vs underfitting conundrum.
+We then proceeded to compare our predictions with the predictions provided in 2016 and have plotted the standard deviation of the differences.
+
+**The best technique that provided the most optimal output and performance was SVM using Random Over-sampling.**
+
+**Finally, we have provided a list of our AKT and mTOR substrates that our models predicted with highest probability along with the submission of this report. File names are 'AKT_Predicted_List' & 'mTOR_Predicted_List'** 
+
+**Limitations:** There were some limiations in the approaches that we handled as part of this project and we would like to acknowledge those below.
+
+1. Limitation of Random over-sampling using ROSE - Since the ROSE package randomly selects samples from remaining unlabelled data, there is a possibility that this will lead to bias if the samples being selected by ROSE are not positive data samples. 
+
+2. Limitation of Repeated sampling - If the randomly selected unlabelled data points are from the same positive class this will lead to a poor model output. this limitation is being overcome by running the model 50 times in our case and using the ensemble of the models. But the number of execution may have to be very high to improve performance dramatically.
+
+**Computational challenges:** Repeated sampling using bagging technique can be performed with n bags and iterate for each of the 13 features and again with different cost parameters. When we attempted this , we faced challenges with the computing capability avaiable in our personal laptops, and hence we had to drop off the cost parameter from the equation. Provided we get enough computing capability we can further explore this to improve our model performance.

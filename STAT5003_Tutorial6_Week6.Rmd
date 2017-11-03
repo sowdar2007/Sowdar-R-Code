@@ -1,0 +1,74 @@
+---
+title: "STAT5003_Tutorial6_Week6"
+author: "Sowdarmendran Anantharaj"
+date: "September 19, 2017"
+output: html_document
+---
+
+##Read the breast data file
+```{r}
+setwd("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods")
+breast_in_data <- read.table("breast.txt", header=T)
+head(breast_in_data)
+str(breast_in_data)
+```
+
+##Classifier evaluation
+##Split the data into training (80%) and test set (20%)
+```{r}
+library(caret)
+inTrain <- createDataPartition(breast_in_data$Class, p = .8)[[1]]
+dataTrain <- breast_in_data[ inTrain, ]
+dataTest  <- breast_in_data[-inTrain, ]
+```
+
+##demonstrate overfitting using test dataset
+```{r}
+library(class)
+accOnTrain <- c()
+accOnTest <- c()
+for(k in seq(21, 1, by=-2)) {
+  knnOnTrain <- knn(train=dataTrain[,-3], test=dataTrain[,-3], cl=dataTrain[,3], k=k)
+  knnOnTest <- knn(train=dataTrain[,-3], test=dataTest[,-3], cl=dataTrain[,3], k=k)
+  accOnTrain <- c(accOnTrain, sum(knnOnTrain == dataTrain[,3]) / nrow(dataTrain) * 100)
+  accOnTest <- c(accOnTest, sum(knnOnTest == dataTest[,3]) / nrow(dataTest) * 100)
+}
+
+plot(accOnTrain, type="b", col="blue", ylim=c(88, 100))
+lines(accOnTest, type="b", col="red")
+legend("topleft", c("Training", "Test"), col=c("blue", "red"), lty=c(1,1))
+```
+
+##Cross validation of classification
+```{r}
+source("/Users/Sahana/Documents/STAT5003 Computational Statistical Methods/functions_w6.R")
+library(MASS)
+fold <- createFolds(breast_in_data$Class, k=10)
+# apply 10-fold cross-validation
+knn.TP <- knn.TN <- knn.FP <- knn.FN <- c()
+lda.TP <- lda.TN <- lda.FP <- lda.FN <- c()
+
+for(i in 1:length(fold)){
+    # true label for fold i
+    truth <- breast_in_data$Class[fold[[i]]]
+
+    # apply knn for classification
+    preds <- knn(breast_in_data[-fold[[i]],-20], breast_in_data[fold[[i]],-20], breast_in_data$Class[-fold[[i]]], k=5)
+    knn.TP <- c(knn.TP, sum((truth == preds)[truth == "M"]))
+    knn.TN <- c(knn.TN, sum((truth == preds)[truth == "R"]))
+    knn.FP <- c(knn.FP, sum((truth != preds)[truth == "R"]))
+    knn.FN <- c(knn.FN, sum((truth != preds)[truth == "M"]))
+    
+    # apply LDA for classification
+    lda.model <- lda(Class~., data=breast_in_data[-fold[[i]],])
+    pred.probs <- predict(lda.model, newdata=breast_in_data[fold[[i]],-20])$posterior[,"M"]
+    preds <- ifelse(pred.probs > 0.5, "M", "R")
+    lda.TP <- c(lda.TP, sum((truth == preds)[truth == "M"]))
+    lda.TN <- c(lda.TN, sum((truth == preds)[truth == "R"]))
+    lda.FP <- c(lda.FP, sum((truth != preds)[truth == "R"]))
+    lda.FN <- c(lda.FN, sum((truth != preds)[truth == "M"]))
+}
+
+evaluate(knn.TN, knn.FP, knn.TP, knn.FN)
+```
+
